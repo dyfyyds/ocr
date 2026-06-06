@@ -1,0 +1,19 @@
+# 数据卷目录
+mysql-data/
+uploads/
+
+# 环境变量（保留 example）
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Node
+node_modules/
+dist/
+
+# IDE
+.vscode/
+.idea/

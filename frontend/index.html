@@ -1,0 +1,1247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>智能项目管理系统 - 控制舱</title>
+  
+  <!-- CDN 依赖 -->
+  <script src="https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.prod.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.2/dist/echarts.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- 自定义视觉样式表 -->
+  <link rel="stylesheet" href="style.css">
+  <style>
+    /* 解决挤压感，微调排版间距与行高 */
+    .nav-item {
+      padding: 14px 20px !important;
+      margin-bottom: 8px !important;
+      letter-spacing: 0.04em;
+    }
+    .table-cyber th, .table-cyber td {
+      padding: 18px 20px !important;
+      line-height: 1.6;
+    }
+    .stat-cards {
+      gap: 24px !important;
+    }
+    .glass-panel {
+      padding: 28px !important;
+    }
+    .form-group {
+      margin-bottom: 24px;
+    }
+    .input-cyber {
+      padding: 12px 16px !important;
+      font-size: 14px !important;
+      line-height: 1.5;
+    }
+    /* 修复带图标的输入框左侧内边距，防止文本与图标重合 */
+    .relative .input-cyber {
+      padding-left: 44px !important;
+    }
+    .btn-cyber {
+      padding: 12px 28px !important;
+      font-size: 14px !important;
+      letter-spacing: 0.05em;
+    }
+    .compare-cell {
+      padding: 18px 20px !important;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 写实星系背景图片 (带鼠标视差) -->
+  <div id="cosmic-backdrop" class="fixed inset-[-50px] pointer-events-none z-0 bg-cover bg-center"></div>
+
+  <!-- 星空背景 Canvas -->
+  <canvas id="starfield" class="fixed inset-0 pointer-events-none z-1"></canvas>
+
+  <div id="app" v-cloak class="h-screen flex flex-col relative z-10">
+
+    <!-- ── 1. 用户登录界面 (支持密码校验与严格权限分离) ── -->
+    <div v-if="!currentUser" class="min-h-screen flex flex-col items-center justify-center relative overflow-hidden px-4 py-12">
+      <div class="space-grid-bg"></div>
+      
+      <!-- 全息顶部徽标 -->
+      <div class="relative z-10 mb-8 text-center">
+        <div class="inline-flex p-5 rounded-3xl bg-cyan-500/10 border border-cyan-400/30 shadow-[0_0_50px_rgba(0,242,254,0.15)] mb-5 animate-pulse">
+          <i class="fa-solid fa-cube text-6xl text-cyan-400"></i>
+        </div>
+        <h1 class="text-4xl md:text-5xl font-extrabold tracking-tight bg-gradient-to-r from-cyan-400 via-sky-300 to-purple-500 bg-clip-text text-transparent glow-text">
+          智能项目管理系统
+        </h1>
+        <p class="text-sm md:text-base text-slate-400 mt-3 tracking-widest font-light">
+          基于 OCR & NLP 技术 · 项目全生命周期数字化控制舱
+        </p>
+      </div>
+
+      <!-- 登录表单卡片 (宽敞开阔) -->
+      <div class="w-full max-w-md glass-panel relative z-10 space-y-6 md:p-10 shadow-[0_20px_50px_rgba(0,0,0,0.6)]">
+        <div class="text-center">
+          <h2 class="text-xl font-bold text-slate-200 tracking-wider">用户安全登录</h2>
+          <p class="text-xs text-slate-500 mt-1">请输入授权凭证接入系统</p>
+        </div>
+
+        <!-- 错误提示 -->
+        <div v-if="loginForm.error" class="text-rose-400 text-xs bg-rose-500/10 border border-rose-500/20 p-3 rounded-lg text-center font-medium animate-shake">
+          <i class="fa-solid fa-triangle-exclamation mr-1"></i> {{ loginForm.error }}
+        </div>
+
+        <!-- 输入表单 -->
+        <form @submit.prevent="handleLogin" class="space-y-5">
+          <div class="flex flex-col gap-2">
+            <label class="text-xs font-semibold text-slate-400 tracking-wider">系统账号</label>
+            <div class="relative">
+              <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 flex items-center"><i class="fa-solid fa-user"></i></span>
+              <input v-model="loginForm.username" type="text" class="input-cyber w-full pl-11" placeholder="输入您的用户名" required autocomplete="username">
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-2">
+            <label class="text-xs font-semibold text-slate-400 tracking-wider">登录密码</label>
+            <div class="relative">
+              <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 flex items-center"><i class="fa-solid fa-lock"></i></span>
+              <input v-model="loginForm.password" type="password" class="input-cyber w-full pl-11" placeholder="输入密码" required autocomplete="current-password">
+            </div>
+          </div>
+
+          <button type="submit" class="btn-cyber btn-cyber-primary w-full justify-center py-3.5 mt-2 shadow-[0_4px_20px_rgba(0,242,254,0.25)]">
+            <i class="fa-solid fa-right-to-bracket mr-2"></i> 登 录
+          </button>
+        </form>
+
+        <!-- 演示账号快捷辅助面板 -->
+        <div class="border-t border-slate-800 pt-5 space-y-3">
+          <div class="text-center text-[11px] font-semibold text-slate-500 uppercase tracking-widest">
+            演示快捷账号（点击自动回填并登录）
+          </div>
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <div @click="quickAutofillAndLogin('admin')" class="p-2.5 rounded-lg bg-slate-900/50 hover:bg-red-500/10 border border-slate-800 hover:border-red-500/40 text-center cursor-pointer transition-all duration-300">
+              <span class="font-bold text-red-400 block mb-0.5">管理员</span>
+              <span class="text-[10px] text-slate-500">admin / 123456</span>
+            </div>
+            <div @click="quickAutofillAndLogin('business')" class="p-2.5 rounded-lg bg-slate-900/50 hover:bg-cyan-500/10 border border-slate-800 hover:border-cyan-500/40 text-center cursor-pointer transition-all duration-300">
+              <span class="font-bold text-cyan-400 block mb-0.5">商务经理</span>
+              <span class="text-[10px] text-slate-500">business / 123456</span>
+            </div>
+            <div @click="quickAutofillAndLogin('pm')" class="p-2.5 rounded-lg bg-slate-900/50 hover:bg-amber-500/10 border border-slate-800 hover:border-amber-500/40 text-center cursor-pointer transition-all duration-300">
+              <span class="font-bold text-amber-400 block mb-0.5">项目经理</span>
+              <span class="text-[10px] text-slate-500">pm / 123456</span>
+            </div>
+            <div @click="quickAutofillAndLogin('finance')" class="p-2.5 rounded-lg bg-slate-900/50 hover:bg-emerald-500/10 border border-slate-800 hover:border-emerald-500/40 text-center cursor-pointer transition-all duration-300">
+              <span class="font-bold text-emerald-400 block mb-0.5">财务总监</span>
+              <span class="text-[10px] text-slate-500">finance / 123456</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 2. 主体工作空间 (权限强分离 & 宽敞排版) ── -->
+    <div v-else class="flex-1 flex overflow-hidden">
+      
+      <!-- 侧边栏菜单 (中文显示 - 结构优化：内容自适应滚动，底部信息固定不滚动) -->
+      <aside class="w-72 glass-panel m-4 mr-0 flex flex-col shrink-0 border-r border-slate-800 overflow-hidden">
+        
+        <!-- 系统标识 -->
+        <div class="p-5 border-b border-slate-800 flex items-center gap-3 shrink-0">
+          <div class="size-10 rounded-2xl bg-gradient-to-br from-cyan-400 to-purple-600 flex items-center justify-center text-slate-900 font-bold shadow-[0_0_15px_var(--accent-primary-glow)]">
+            <i class="fa-solid fa-circle-nodes text-xl text-slate-950"></i>
+          </div>
+          <div>
+            <h2 class="font-bold text-base text-slate-100 tracking-wider">智能项目管理</h2>
+            <p class="text-[10px] text-cyan-400/80 font-mono tracking-widest uppercase">核心系统 控制台</p>
+          </div>
+        </div>
+
+        <!-- 导航菜单 (可滚动区域) -->
+        <div class="flex-1 overflow-y-auto py-6">
+          <nav class="px-2">
+            <div class="text-[11px] font-bold text-slate-500 tracking-widest uppercase mb-4 px-4">系统导航菜单</div>
+            
+            <!-- 工作台通用选项 -->
+            <a @click="activeTab = 'dashboard'; nextTick(() => renderCharts())" :class="{ 'active': activeTab === 'dashboard' }" class="nav-item">
+              <i class="fa-solid fa-chart-pie mr-2"></i>
+              <span>数据大屏看板</span>
+            </a>
+
+            <!-- 管理员专用 -->
+            <template v-if="currentUser.role === 'admin'">
+              <a @click="activeTab = 'audit'" :class="{ 'active': activeTab === 'audit' }" class="nav-item">
+                <i class="fa-solid fa-stamp text-amber-500 mr-2"></i>
+                <span>立项终审中心</span>
+                <span v-if="pendingAuditProjects.length > 0" class="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 font-bold border border-red-500/30">
+                  {{ pendingAuditProjects.length }}
+                </span>
+              </a>
+              <a @click="activeTab = 'users'" :class="{ 'active': activeTab === 'users' }" class="nav-item">
+                <i class="fa-solid fa-users-gear mr-2"></i>
+                <span>账户与权限分配</span>
+              </a>
+              <a @click="activeTab = 'dict'" :class="{ 'active': activeTab === 'dict' }" class="nav-item">
+                <i class="fa-solid fa-book-atlas mr-2"></i>
+                <span>数据字典管理</span>
+              </a>
+            </template>
+
+            <!-- 商务专用 -->
+            <template v-if="currentUser.role === 'business'">
+              <a @click="activeTab = 'register'" :class="{ 'active': activeTab === 'register' }" class="nav-item">
+                <i class="fa-solid fa-plus-minus text-cyan-400 mr-2"></i>
+                <span>智能立项登记</span>
+              </a>
+              <a @click="activeTab = 'projects'" :class="{ 'active': activeTab === 'projects' }" class="nav-item">
+                <i class="fa-solid fa-folder-closed mr-2"></i>
+                <span>项目档案中心</span>
+              </a>
+            </template>
+
+            <!-- 项目经理专用 -->
+            <template v-if="currentUser.role === 'pm'">
+              <a @click="activeTab = 'pm_projects'" :class="{ 'active': activeTab === 'pm_projects' }" class="nav-item">
+                <i class="fa-solid fa-laptop-code text-amber-400 mr-2"></i>
+                <span>项目进度跟踪</span>
+              </a>
+            </template>
+
+            <!-- 财务专用 -->
+            <template v-if="currentUser.role === 'finance'">
+              <a @click="activeTab = 'finance_ledger'" :class="{ 'active': activeTab === 'finance_ledger' }" class="nav-item">
+                <i class="fa-solid fa-money-bill-transfer text-emerald-400 mr-2"></i>
+                <span>财务收支台账</span>
+              </a>
+              <a @click="activeTab = 'close_audit'" :class="{ 'active': activeTab === 'close_audit' }" class="nav-item">
+                <i class="fa-solid fa-file-invoice-dollar text-purple-400 mr-2"></i>
+                <span>项目结项终审</span>
+                <span v-if="pendingCloseProjects.length > 0" class="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 font-bold border border-red-500/30">
+                  {{ pendingCloseProjects.length }}
+                </span>
+              </a>
+            </template>
+          </nav>
+        </div>
+
+        <!-- 侧边栏底部面板 (切换角色及退出登录 - 固定不滚动) -->
+        <div class="p-5 border-t border-slate-800 bg-slate-950/40 rounded-b-2xl space-y-4 shrink-0">
+          <!-- 当前激活用户卡片 -->
+          <div class="flex items-center gap-3 px-2">
+            <div class="size-9 rounded-full bg-cyan-500/20 border border-cyan-400/30 flex items-center justify-center font-bold text-cyan-300">
+              {{ currentUser.name[0] }}
+            </div>
+            <div>
+              <div class="text-xs font-bold text-slate-200">{{ currentUser.name }}</div>
+              <div class="text-[10px] text-slate-500">角色: {{ currentUser.role === 'admin' ? '系统管理员' : currentUser.role === 'business' ? '商务经理' : currentUser.role === 'finance' ? '财务总监' : '项目经理' }}</div>
+            </div>
+          </div>
+
+          <!-- 快捷演示角色切换器 (保留用于测试，并汉化) -->
+          <div class="border-t border-slate-800 pt-3">
+            <label class="text-[10px] font-bold text-slate-600 block mb-1">快捷测试：切换控制面板</label>
+            <div class="grid grid-cols-4 gap-1">
+              <button @click="login('admin')" :class="{'bg-red-500/20 border-red-500/40 text-red-400': currentUser.role==='admin', 'border-slate-800 text-slate-600': currentUser.role!=='admin'}" class="text-[10px] py-1.5 border rounded font-bold transition-all">管理员</button>
+              <button @click="login('business')" :class="{'bg-cyan-500/20 border-cyan-500/40 text-cyan-400': currentUser.role==='business', 'border-slate-800 text-slate-600': currentUser.role!=='business'}" class="text-[10px] py-1.5 border rounded font-bold transition-all">商务</button>
+              <button @click="login('pm')" :class="{'bg-amber-500/20 border-amber-500/40 text-amber-400': currentUser.role==='pm', 'border-slate-800 text-slate-600': currentUser.role!=='pm'}" class="text-[10px] py-1.5 border rounded font-bold transition-all">经理</button>
+              <button @click="login('finance')" :class="{'bg-emerald-500/20 border-emerald-500/40 text-emerald-400': currentUser.role==='finance', 'border-slate-800 text-slate-600': currentUser.role!=='finance'}" class="text-[10px] py-1.5 border rounded font-bold transition-all">财务</button>
+            </div>
+          </div>
+
+          <a @click="logout" class="nav-item !mb-0 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300">
+            <i class="fa-solid fa-power-off"></i>
+            <span>断开系统连接</span>
+          </a>
+        </div>
+
+      </aside>
+
+      <!-- 主要工作区 -->
+      <main class="flex-1 flex flex-col overflow-hidden p-4">
+        
+        <!-- 顶栏状态监控 -->
+        <header class="glass-panel mb-4 flex items-center justify-between shadow-md">
+          <div class="flex items-center gap-3">
+            <h2 class="text-xl font-bold text-slate-100">
+              {{ activeTab === 'dashboard' ? '数据大屏看板' : activeTab === 'register' ? (activeEditProject ? '修改并重新提交立项' : '智能立项登记') : activeTab === 'projects' ? '项目档案中心' : activeTab === 'audit' ? '立项终审中心' : activeTab === 'pm_projects' ? '项目进度跟踪' : activeTab === 'finance_ledger' ? '财务收支台账' : activeTab === 'close_audit' ? '项目结项复核' : activeTab === 'users' ? '账户与权限分配' : '字典参数设置' }}
+            </h2>
+            <span class="text-xs text-slate-600">/</span>
+            <span class="text-xs text-slate-400">系统主控台</span>
+          </div>
+
+          <!-- 系统内核监控状态 (全部汉化) -->
+          <div class="flex items-center gap-6">
+            <div class="flex items-center gap-2 text-xs">
+              <span class="size-2 rounded-full bg-emerald-500 animate-ping"></span>
+              <span class="text-slate-400">本地数据引擎:</span>
+              <span class="text-emerald-400 font-mono font-bold">已连接</span>
+            </div>
+            <div class="flex items-center gap-2 text-xs border-l border-slate-800 pl-6">
+              <span class="size-2 rounded-full" :class="isScanning ? 'bg-cyan-400 animate-pulse' : 'bg-blue-500'"></span>
+              <span class="text-slate-400">PaddleOCR 识别服务:</span>
+              <span class="font-bold" :class="isScanning ? 'text-cyan-300' : 'text-blue-400'">
+                {{ isScanning ? '智能解析中...' : '服务就绪 (待命)' }}
+              </span>
+            </div>
+          </div>
+        </header>
+
+        <!-- 面板画布区域 -->
+        <div class="flex-1 overflow-y-auto space-y-6">
+          
+          <!-- ── 模块 1: 数据大屏看板 (DASHBOARD) ── -->
+          <div v-if="activeTab === 'dashboard'" class="space-y-6">
+            
+            <!-- 统计指标格栅 (汉化 + 宽松布局) -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-6 perspective-1000">
+              
+              <!-- 指标 1 -->
+              <div class="tilt-card glass-panel p-5 relative border-l-4 border-l-cyan-400 shadow-lg min-h-[140px]">
+                <div class="absolute right-5 top-5 w-10 h-10 flex items-center justify-center rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-lg">
+                  <i class="fa-solid fa-file-invoice"></i>
+                </div>
+                <div class="tilt-card-inner pr-12">
+                  <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">立项合同总额</p>
+                  <h3 class="text-2xl sm:text-3xl lg:text-2xl xl:text-3xl font-extrabold text-slate-100 mt-2">¥ {{ stats.contractSum }}</h3>
+                  <p class="text-[10px] text-slate-500 mt-1">包含所有已立项/已结项项目</p>
+                </div>
+              </div>
+
+              <!-- 指标 2 -->
+              <div class="tilt-card glass-panel p-5 relative border-l-4 border-l-purple-500 shadow-lg min-h-[140px]">
+                <div class="absolute right-5 top-5 w-10 h-10 flex items-center justify-center rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 text-lg">
+                  <i class="fa-solid fa-receipt"></i>
+                </div>
+                <div class="tilt-card-inner pr-12">
+                  <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">累计开票总额</p>
+                  <h3 class="text-2xl sm:text-3xl lg:text-2xl xl:text-3xl font-extrabold text-purple-400 mt-2">¥ {{ stats.invoicedSum }}</h3>
+                  <p class="text-[10px] text-slate-500 mt-1">项目累计开票比例: {{ stats.invoiceRate }}%</p>
+                </div>
+              </div>
+
+              <!-- 指标 3 -->
+              <div class="tilt-card glass-panel p-5 relative border-l-4 border-l-emerald-500 shadow-lg min-h-[140px]">
+                <div class="absolute right-5 top-5 w-10 h-10 flex items-center justify-center rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-lg">
+                  <i class="fa-solid fa-circle-dollar-to-slot"></i>
+                </div>
+                <div class="tilt-card-inner pr-12">
+                  <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">已回款总额</p>
+                  <h3 class="text-2xl sm:text-3xl lg:text-2xl xl:text-3xl font-extrabold text-emerald-400 mt-2">¥ {{ stats.paymentSum }}</h3>
+                  <p class="text-[10px] text-slate-500 mt-1">开票回款回收占比: {{ stats.collectionRate }}%</p>
+                </div>
+              </div>
+
+              <!-- 指标 4 -->
+              <div class="tilt-card glass-panel p-5 relative border-l-4 border-l-amber-500 shadow-lg min-h-[140px]">
+                <div class="absolute right-5 top-5 w-10 h-10 flex items-center justify-center rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-lg">
+                  <i class="fa-solid fa-piggy-bank"></i>
+                </div>
+                <div class="tilt-card-inner pr-12">
+                  <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">应收应付账余款</p>
+                  <h3 class="text-2xl sm:text-3xl lg:text-2xl xl:text-3xl font-extrabold text-amber-500 mt-2">¥ {{ stats.receivables }}</h3>
+                  <p class="text-[10px] text-slate-500 mt-1">已开票但资金尚未回款到账部分</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- ECharts 双图表并排 -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <!-- 开票回款趋势 -->
+              <div class="glass-panel p-6 lg:col-span-2">
+                <div class="flex items-center justify-between mb-6">
+                  <h3 class="font-bold text-base text-slate-200">近 6 个月开票/回款金额走势</h3>
+                  <span class="text-xs text-slate-500">柱状图/折线图联动</span>
+                </div>
+                <div id="billingCollectionTrendChart" class="w-full h-80"></div>
+              </div>
+
+              <!-- 项目分布 -->
+              <div class="glass-panel p-6">
+                <div class="flex items-center justify-between mb-6">
+                  <h3 class="font-bold text-base text-slate-200">立项生命周期状态占比</h3>
+                  <span class="text-xs text-slate-500">环形图展示</span>
+                </div>
+                <div id="projectStatusChart" class="w-full h-80"></div>
+              </div>
+            </div>
+
+            <!-- 终端日志记录控制台 (全部汉化) -->
+            <div class="glass-panel p-6">
+              <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2">
+                  <div class="size-2.5 rounded-full bg-cyan-400 animate-ping"></div>
+                  <h3 class="font-bold text-base text-slate-200">系统核心活动终端监控 (OCR 及 本地数据库流水)</h3>
+                </div>
+                <span class="text-xs font-mono text-cyan-400">实时事件日志流</span>
+              </div>
+              <div class="terminal-panel">
+                <div v-for="log in terminalLogs" class="terminal-line">
+                  <span class="terminal-time">[{{ log.time }}]</span>
+                  <span class="ml-2 font-bold" :class="{
+                    'text-cyan-400': log.type === 'OCR扫描' || log.type === 'OCR比对' || log.type === 'OCR内核',
+                    'text-emerald-400': log.type === '数据库' || log.type === '财务记账',
+                    'text-amber-500': log.type === '财务审计',
+                    'text-red-400': log.type === '安全',
+                    'text-slate-400': log.type === '系统'
+                  }">[{{ log.type }}]</span>
+                  <span class="ml-2">{{ log.text }}</span>
+                </div>
+                <div v-if="terminalLogs.length === 0" class="text-slate-600 text-center py-4">暂无当前活动终端日志...</div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- ── 模块 2: 智能立项登记 (BUSINESS) ── -->
+          <div v-if="activeTab === 'register'" class="glass-panel p-6 space-y-6">
+            
+            <!-- 分步步骤指示器 -->
+            <div class="flex items-center justify-between bg-slate-900/50 p-5 border border-slate-800 rounded-2xl">
+              <div class="flex items-center gap-2">
+                <span class="size-7 rounded-full flex items-center justify-center text-xs font-bold" :class="currentStep >= 1 ? 'bg-cyan-400 text-slate-900 shadow-[0_0_10px_rgba(0,242,254,0.3)]' : 'bg-slate-800 text-slate-500'">1</span>
+                <span class="text-xs font-medium" :class="currentStep === 1 ? 'text-cyan-300 font-bold' : 'text-slate-500'">上传 Word 合同</span>
+              </div>
+              <div class="h-0.5 bg-slate-800 flex-1 mx-4"></div>
+              
+              <div class="flex items-center gap-2">
+                <span class="size-7 rounded-full flex items-center justify-center text-xs font-bold" :class="currentStep >= 2 ? 'bg-cyan-400 text-slate-900 shadow-[0_0_10px_rgba(0,242,254,0.3)]' : 'bg-slate-800 text-slate-500'">2</span>
+                <span class="text-xs font-medium" :class="currentStep === 2 ? 'text-cyan-300 font-bold' : 'text-slate-500'">智能 NLP 自动提取</span>
+              </div>
+              <div class="h-0.5 bg-slate-800 flex-1 mx-4"></div>
+
+              <div class="flex items-center gap-2">
+                <span class="size-7 rounded-full flex items-center justify-center text-xs font-bold" :class="currentStep >= 3 ? 'bg-cyan-400 text-slate-900 shadow-[0_0_10px_rgba(0,242,254,0.3)]' : 'bg-slate-800 text-slate-500'">3</span>
+                <span class="text-xs font-medium" :class="currentStep === 3 ? 'text-cyan-300 font-bold' : 'text-slate-500'">盖章扫描件 & 预算流水</span>
+              </div>
+              <div class="h-0.5 bg-slate-800 flex-1 mx-4"></div>
+
+              <div class="flex items-center gap-2">
+                <span class="size-7 rounded-full flex items-center justify-center text-xs font-bold" :class="currentStep >= 4 ? 'bg-cyan-400 text-slate-900 shadow-[0_0_10px_rgba(0,242,254,0.3)]' : 'bg-slate-800 text-slate-500'">4</span>
+                <span class="text-xs font-medium" :class="currentStep === 4 ? 'text-cyan-300 font-bold' : 'text-slate-500'">多版本 OCR 差异校验</span>
+              </div>
+            </div>
+
+            <!-- 第一步: 上传 Word 原件 -->
+            <div v-if="currentStep === 1" class="py-16 flex flex-col items-center">
+              <div v-if="!isScanning" @click="simulateWordOCR" class="w-full max-w-xl border-2 border-dashed border-slate-700 hover:border-cyan-400 hover:bg-cyan-500/5 rounded-2xl p-16 text-center cursor-pointer transition-all duration-300">
+                <div class="inline-flex p-5 rounded-full bg-slate-800 text-slate-500 mb-5 hover:text-cyan-400 transition-colors">
+                  <i class="fa-solid fa-file-word text-5xl"></i>
+                </div>
+                <h4 class="text-lg font-bold text-slate-200">导入未盖章 Word 原本合同</h4>
+                <p class="text-xs text-slate-500 mt-2">支持拖拽或直接点击上传 (.docx 格式，文件上限 20MB)</p>
+                <span class="inline-block mt-8 px-6 py-2.5 rounded-lg bg-cyan-400 text-slate-900 text-xs font-semibold shadow-[0_0_15px_var(--accent-primary-glow)]">
+                  选择文件并上传
+                </span>
+              </div>
+
+              <!-- 3D扫描仪全息扫描 -->
+              <div v-if="isScanning" class="flex flex-col items-center py-6">
+                <div class="scanner-container mb-8">
+                  <div class="scan-document flex flex-col justify-between">
+                    <div class="scan-line"></div>
+                    <div class="flex justify-between items-center text-slate-600 text-[10px]">
+                      <span>安全校验密匙加密中</span>
+                      <span>v1.0</span>
+                    </div>
+                    <div class="document-lines">
+                      <div class="document-line"></div>
+                      <div class="document-line medium"></div>
+                      <div class="document-line short"></div>
+                      <div class="document-line"></div>
+                      <div class="document-line medium"></div>
+                    </div>
+                    <div class="h-7 rounded bg-cyan-500/10 border border-cyan-400/20 flex items-center justify-center text-[10px] text-cyan-400 animate-pulse font-mono">
+                      PADDLE_OCR_SCANNING...
+                    </div>
+                  </div>
+                </div>
+                <h4 class="text-base font-bold text-cyan-300 animate-pulse glow-text">PaddleOCR 内核正在深度识别文本要素...</h4>
+                <p class="text-xs text-slate-500 mt-2 font-mono">自动分析：项目名称、合同金额、签订日期、合同编号、执行方</p>
+              </div>
+            </div>
+
+            <!-- 第二步: NLP 自动填充确认 -->
+            <div v-if="currentStep === 2" class="space-y-6">
+              <div v-if="activeEditProject">
+                <div v-if="activeEditProject.status === '已驳回'" class="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex flex-col gap-2">
+                  <div class="flex items-center gap-2 font-bold text-sm">
+                    <i class="fa-solid fa-circle-exclamation text-base"></i>
+                    <span>退回重审提醒 (原立项已被驳回)</span>
+                  </div>
+                  <p class="text-[11px] text-slate-300 ml-6">
+                    审批人驳回意见：<span class="text-rose-300 font-semibold underline">{{ activeEditProject.rejectReason }}</span>
+                  </p>
+                  <p class="text-[10px] text-slate-500 ml-6">
+                    请针对上述驳回意见修改对应字段，并在后续步骤中重新上传清晰的盖章件及校验印章差异。
+                  </p>
+                </div>
+                <div v-else class="p-4 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs flex items-center gap-3">
+                  <i class="fa-solid fa-circle-info text-base"></i>
+                  <span><b>编辑重新提交模式激活</b>：您正在修改并重新提起立项 <b>{{ activeEditProject.code }}</b>。系统已自动填充上次录入数据，请核对并修改相应项，然后继续完成后续印章差异确认。</span>
+                </div>
+              </div>
+              <div v-else class="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center gap-3">
+                <i class="fa-solid fa-circle-check text-base"></i>
+                <span><b>NLP 要素自动回填就绪</b>：以下绿色背景字段由系统识别完毕，请仔细确认无误后补充缺失条目。</span>
+              </div>
+              
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs font-bold text-slate-400">项目名称 <span class="text-rose-500">*</span></label>
+                  <input v-model="formProject.name" class="input-cyber bg-emerald-500/5! border-emerald-500/40!" placeholder="项目名称">
+                </div>
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs font-bold text-slate-400">合同/立项编码 <span class="text-rose-500">*</span></label>
+                  <input v-model="formProject.code" class="input-cyber bg-emerald-500/5! border-emerald-500/40!" placeholder="合同/立项编码">
+                </div>
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs font-bold text-slate-400">合同总金额（元） <span class="text-rose-500">*</span></label>
+                  <input v-model="formProject.amount" type="number" class="input-cyber bg-emerald-500/5! border-emerald-500/40!" placeholder="0.00">
+                </div>
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs font-bold text-slate-400">签订日期 <span class="text-rose-500">*</span></label>
+                  <input v-model="formProject.date" type="date" class="input-cyber bg-emerald-500/5! border-emerald-500/40!">
+                </div>
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs font-bold text-slate-400">客户名称（甲方主体） <span class="text-rose-500">*</span></label>
+                  <input v-model="formProject.client" class="input-cyber" placeholder="请输入客户甲方名称">
+                </div>
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs font-bold text-slate-400">项目类别 <span class="text-rose-500">*</span></label>
+                  <select v-model="formProject.type" class="input-cyber bg-slate-900">
+                    <option v-for="item in dictItems.filter(d => d.typeCode === 'PROJECT_TYPE')" :value="item.name">{{ item.name }}</option>
+                  </select>
+                </div>
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs font-bold text-slate-400">指派项目经理 <span class="text-rose-500">*</span></label>
+                  <select v-model="formProject.pm" class="input-cyber bg-slate-900">
+                    <option value="王五">王五（项目经理）</option>
+                    <option value="李四">李四（研发总监）</option>
+                  </select>
+                </div>
+              </div>
+              <div class="flex flex-col gap-2">
+                <label class="text-xs font-bold text-slate-400">项目描述</label>
+                <textarea v-model="formProject.description" class="input-cyber h-28" placeholder="在此输入有关该项目的其他概要说明。"></textarea>
+              </div>
+              <div class="flex justify-end gap-3 border-t border-slate-800 pt-6">
+                <button type="button" @click="resetForm(); activeTab = 'projects'" class="btn-cyber btn-cyber-muted">取消并返回</button>
+                <button type="button" @click="saveAsDraft" class="btn-cyber btn-cyber-outline"><i class="fa-solid fa-floppy-disk"></i> 暂存为草稿</button>
+                <button type="button" @click="nextToSeal" class="btn-cyber btn-cyber-primary">下一步：上传盖章扫描版</button>
+              </div>
+            </div>
+
+            <!-- 第三步: 上传盖章件与开销记账 -->
+            <div v-if="currentStep === 3" class="space-y-6">
+              
+              <!-- PDF上传 -->
+              <div class="glass-panel space-y-4 bg-slate-900/20">
+                <div class="flex justify-between items-center">
+                  <h3 class="font-bold text-base text-slate-200">合同盖章版 PDF 扫描件归档</h3>
+                  <span class="text-xs text-rose-500">* 系统将启动双本校验比对</span>
+                </div>
+                
+                <div v-if="!formProject.contractFile" @click="mockUploadSealPDF" class="border-2 border-dashed border-slate-700 hover:border-cyan-400 p-10 text-center rounded-xl cursor-pointer hover:bg-cyan-500/5 transition-all">
+                  <i class="fa-solid fa-file-pdf text-4xl text-slate-600 mb-3"></i>
+                  <p class="text-sm text-slate-350">点击或拖拽上传带印章 PDF 合同原件</p>
+                  <p class="text-[11px] text-slate-500 mt-1">自动识别签署信息并在后台生成差异比对报告</p>
+                </div>
+
+                <div v-else class="p-4 rounded-xl bg-slate-950/40 flex items-center justify-between border border-slate-800/60">
+                  <div class="flex items-center gap-3">
+                    <div class="p-3 rounded-lg bg-red-500/10 text-red-400"><i class="fa-solid fa-file-pdf text-xl"></i></div>
+                    <div>
+                      <p class="text-sm font-bold text-slate-200">{{ formProject.contractFile }}</p>
+                      <p class="text-[10px] text-slate-500">大小: 2.3 MB · 上传版本: v1 · 自动完成归档锁定</p>
+                    </div>
+                  </div>
+                  <button @click="formProject.contractFile = ''" class="text-rose-400 hover:text-rose-300 text-xs px-3 py-1 bg-rose-500/10 rounded">
+                    删除
+                  </button>
+                </div>
+              </div>
+
+              <!-- 前期预算登记 -->
+              <div class="glass-panel space-y-4 bg-slate-900/20">
+                <h3 class="font-bold text-base text-slate-200">登记项目预算支出（外包、服务器、软件授权等）</h3>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
+                  <div class="flex flex-col gap-2 sm:col-span-2">
+                    <label class="text-xs text-slate-400 font-medium">开销支出说明</label>
+                    <input v-model="newExpense.desc" class="input-cyber" placeholder="例如：阿里云基础主机采购">
+                  </div>
+                  <div class="flex flex-col gap-2">
+                    <label class="text-xs text-slate-400 font-medium">预算总额（元）</label>
+                    <input v-model="newExpense.amount" type="number" class="input-cyber" placeholder="0.00">
+                  </div>
+                  <button @click="addExpenseItem" class="btn-cyber btn-cyber-secondary justify-center h-11">
+                    <i class="fa-solid fa-plus"></i> 添加记录
+                  </button>
+                </div>
+
+                <!-- 支出流水表格 -->
+                <div class="overflow-x-auto border border-slate-800 rounded-xl mt-4">
+                  <table class="table-cyber">
+                    <thead>
+                      <tr>
+                        <th>费用说明</th>
+                        <th>总预算金额</th>
+                        <th>操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="(item, idx) in formProject.expenses">
+                        <td>{{ item.desc }}</td>
+                        <td class="text-rose-400 font-semibold">¥ {{ item.amount.toLocaleString() }}</td>
+                        <td>
+                          <button @click="removeExpenseItem(idx)" class="text-rose-400 hover:text-rose-300 text-xs"><i class="fa-solid fa-trash"></i></button>
+                        </td>
+                      </tr>
+                      <tr v-if="formProject.expenses.length === 0">
+                        <td colspan="3" class="text-center text-slate-500">暂无登记预算费用流水。</td>
+                      </tr>
+                      <tr v-else class="bg-slate-900/40">
+                        <td class="text-right font-bold text-slate-300">合计预算支出:</td>
+                        <td colspan="2" class="text-rose-400 font-bold text-sm">¥ {{ totalFormExpenses.toLocaleString() }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- 按钮 -->
+              <div class="flex justify-between items-center border-t border-slate-800 pt-6">
+                <button type="button" @click="currentStep = 2" class="btn-cyber btn-cyber-muted"><i class="fa-solid fa-arrow-left"></i> 上一步</button>
+                <div class="flex gap-3">
+                  <button type="button" @click="saveAsDraft" class="btn-cyber btn-cyber-outline"><i class="fa-solid fa-floppy-disk"></i> 暂存为草稿</button>
+                  <button type="button" @click="nextToVerify" class="btn-cyber btn-cyber-primary">下一步：合同校验差异分析 <i class="fa-solid fa-arrow-right"></i></button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 第四步: 双版本校验及差异审核 -->
+            <div v-if="currentStep === 4" class="space-y-6">
+              
+              <div class="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs flex items-center gap-3">
+                <i class="fa-solid fa-triangle-exclamation text-base animate-bounce"></i>
+                <div>
+                  <p class="font-bold">系统检测到 2 处提取文本差异：</p>
+                  <p class="text-slate-400 mt-1">Word 与 PDF 印章版识别的参数如下，请确认是否属格式问题并予以接受：</p>
+                </div>
+              </div>
+
+              <!-- 差异校对面板 -->
+              <div class="diff-container shadow-inner">
+                <!-- PDF OCR 值 -->
+                <div>
+                  <div class="diff-header"><i class="fa-solid fa-file-pdf mr-1"></i> PDF 盖章扫描版 OCR 结果</div>
+                  <div class="diff-cell mismatch">580,000.00 元</div>
+                  <div class="diff-cell format-diff">2026年6月1日</div>
+                  <div class="diff-cell match">智能大屏数据可视化系统</div>
+                  <div class="diff-cell match">HT-2026-088</div>
+                  <div class="diff-cell match">网信政务科技集团</div>
+                </div>
+
+                <!-- 状态标识 -->
+                <div class="flex flex-col">
+                  <div class="diff-header !bg-transparent"></div>
+                  <div class="diff-separator">不匹配</div>
+                  <div class="diff-separator">格式差异</div>
+                  <div class="diff-separator">一致</div>
+                  <div class="diff-separator">一致</div>
+                  <div class="diff-separator">一致</div>
+                </div>
+
+                <!-- Word 输入值 -->
+                <div>
+                  <div class="diff-header"><i class="fa-solid fa-file-word mr-1"></i> Word 原件输入值</div>
+                  <div class="diff-cell mismatch">420000.00 元</div>
+                  <div class="diff-cell format-diff">2026-06-05</div>
+                  <div class="diff-cell match">智能大屏数据可视化系统</div>
+                  <div class="diff-cell match">HT-2026-088</div>
+                  <div class="diff-cell match">网信政务科技集团</div>
+                </div>
+              </div>
+
+              <!-- 差异人工二次验证 -->
+              <div class="glass-panel space-y-4">
+                <h3 class="font-bold text-sm text-slate-350">人工确认审核表单</h3>
+                
+                <div class="space-y-3">
+                  <div class="flex items-center justify-between p-4 rounded-xl bg-slate-900 border border-slate-800">
+                    <span class="text-xs text-slate-300">差异 1: 金额比对差异 (PDF 盖章版大写金额 580,000.00 与 Word 登记的 420,000 不一致)</span>
+                    <label class="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
+                      <input type="checkbox" v-model="verifyAccept1" class="accent-cyan-400 scale-110"> 勾选接受此金额差异
+                    </label>
+                  </div>
+                  <div class="flex items-center justify-between p-4 rounded-xl bg-slate-900 border border-slate-800">
+                    <span class="text-xs text-slate-300">差异 2: 日期格式差异 (PDF "2026年6月1日" 与 Word "2026-06-05" 存在轻微偏离)</span>
+                    <label class="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
+                      <input type="checkbox" v-model="verifyAccept2" class="accent-cyan-400 scale-110"> 勾选接受此日期差异
+                    </label>
+                  </div>
+                </div>
+
+                <div class="flex flex-col gap-2 mt-4">
+                  <label class="text-xs text-slate-400">核对差异备注说明（必填）</label>
+                  <textarea v-model="verifyRemark" class="input-cyber h-24 text-xs" placeholder="请在此描述对于上述合同差异的人工说明"></textarea>
+                </div>
+              </div>
+
+              <!-- 按钮 -->
+              <div class="flex justify-between items-center border-t border-slate-800 pt-6">
+                <button @click="currentStep = 3" class="btn-cyber btn-cyber-muted"><i class="fa-solid fa-arrow-left"></i> 上一步</button>
+                <button @click="submitProjectRegistration" class="btn-cyber btn-cyber-primary">{{ activeEditProject ? '保存修改并重新提交立项' : '确认差异并提交立项审核' }}</button>
+              </div>
+
+            </div>
+
+          </div>
+
+          <!-- ── 模块 3: 项目档案中心 (PROJECTS) ── -->
+          <div v-if="activeTab === 'projects'" class="glass-panel p-6 space-y-6">
+            <div class="flex justify-between items-center">
+              <h3 class="font-bold text-base text-slate-200">项目档案归档一览</h3>
+              <button @click="activeTab = 'register'" class="btn-cyber btn-cyber-primary py-1.5"><i class="fa-solid fa-plus"></i> 新增立项项目</button>
+            </div>
+
+            <!-- 数据表格 -->
+            <div class="overflow-x-auto border border-slate-800 rounded-xl">
+              <table class="table-cyber">
+                <thead>
+                  <tr>
+                    <th>立项编号</th>
+                    <th>项目名称</th>
+                    <th>项目经理</th>
+                    <th>合同额</th>
+                    <th>状态</th>
+                    <th>流程创建人</th>
+                    <th>驳回意见/审计日志</th>
+                    <th>管理操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="proj in projects">
+                    <td class="font-mono text-cyan-400 text-xs">{{ proj.code }}</td>
+                    <td>
+                      <div class="font-bold text-slate-100 text-sm">{{ proj.name }}</div>
+                      <div class="text-[10px] text-slate-500">客户名称: {{ proj.client }}</div>
+                    </td>
+                    <td>{{ proj.pm }}</td>
+                    <td class="font-mono font-bold text-emerald-400">¥ {{ proj.amount.toLocaleString() }}</td>
+                    <td>
+                      <span v-if="proj.status === '草稿'" class="badge badge-draft"><i class="fa-solid fa-file-signature text-[10px]"></i> 草稿</span>
+                      <span v-else-if="proj.status === '待审核'" class="badge badge-pending"><i class="fa-solid fa-clock text-[10px] animate-pulse"></i> 待立项审核</span>
+                      <span v-else-if="proj.status === '已立项'" class="badge badge-approved"><i class="fa-solid fa-play text-[10px]"></i> 正在执行中</span>
+                      <span v-else-if="proj.status === '已结项'" class="badge badge-closed"><i class="fa-solid fa-circle-check text-[10px]"></i> 已顺利结项</span>
+                      <span v-else-if="proj.status === '已驳回'" class="badge badge-rejected"><i class="fa-solid fa-circle-xmark text-[10px]"></i> 立项已驳回</span>
+                    </td>
+                    <td>{{ proj.created_by }}</td>
+                    <td class="max-w-xs truncate text-xs font-mono" :class="proj.status === '已驳回' ? 'text-rose-400 font-semibold' : 'text-slate-500'">
+                      {{ proj.status === '已驳回' ? proj.rejectReason : (proj.rejectReason || '无') }}
+                    </td>
+                    <td>
+                      <button v-if="['草稿', '已驳回'].includes(proj.status)" @click="startEditProject(proj)" class="btn-action-cyber">
+                        <i class="fa-solid fa-pen-to-square"></i> 编辑重提
+                      </button>
+                      <span v-else class="text-slate-500 text-xs flex items-center gap-1.5"><i class="fa-solid fa-lock text-[10px]"></i> 档案锁定</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- ── 模块 4: 项目进度跟踪 (PM PROJECTS) ── -->
+          <div v-if="activeTab === 'pm_projects'" class="glass-panel p-6 space-y-6">
+            <h3 class="font-bold text-base text-slate-200">项目经理工程指派看板</h3>
+            
+            <div class="overflow-x-auto border border-slate-800 rounded-xl">
+              <table class="table-cyber">
+                <thead>
+                  <tr>
+                    <th>立项编号</th>
+                    <th>工程名称</th>
+                    <th>合同额</th>
+                    <th>已耗预算支出</th>
+                    <th>工程状态</th>
+                    <th>完工/验收文件</th>
+                    <th>申请项</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="proj in projects.filter(p => p.pm === currentUser.name || currentUser.name === '王五（项目经理）')">
+                    <td class="font-mono text-cyan-400">{{ proj.code }}</td>
+                    <td>
+                      <div class="font-bold text-slate-100">{{ proj.name }}</div>
+                      <div class="text-[10px] text-slate-500">客户: {{ proj.client }}</div>
+                    </td>
+                    <td class="font-bold">¥ {{ proj.amount.toLocaleString() }}</td>
+                    <td class="text-rose-400">
+                      ¥ {{ (proj.expenses?.reduce((sum, item) => sum + item.amount, 0) || 0).toLocaleString() }}
+                    </td>
+                    <td>
+                      <span v-if="proj.status === '已立项'" class="badge badge-approved">正在执行中</span>
+                      <span v-else-if="proj.status === '已结项'" class="badge badge-closed">已顺利结项</span>
+                      <span v-else class="badge badge-draft">{{ proj.status }}</span>
+                    </td>
+                    <td>
+                      <div v-if="proj.acceptanceReport">
+                        <a href="#" @click.prevent class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/20 hover:border-cyan-500/40 font-mono text-[11px] transition-all duration-300">
+                          <i class="fa-solid fa-file-circle-check text-xs"></i>
+                          <span>{{ proj.acceptanceReport }}</span>
+                          <i class="fa-solid fa-arrow-up-right-from-square text-[9px] opacity-70"></i>
+                        </a>
+                      </div>
+                      <span v-else class="text-xs text-slate-600">暂无完工报告</span>
+                    </td>
+                    <td>
+                      <div class="flex items-center gap-2">
+                        <button v-if="proj.status === '已立项' && !proj.acceptanceReport" @click="showAcceptanceReportModal = proj" class="text-xs px-3.5 py-1.5 bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 rounded border border-amber-500/30">
+                          上传验收报告申请结项
+                        </button>
+                        <span v-else-if="proj.status === '已立项' && proj.acceptanceReport" class="text-[10px] text-slate-500 font-medium">
+                          财务正在结项终审中...
+                        </span>
+                        <span v-else class="text-xs text-slate-500">-</span>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- ── 模块 5: 财务收支台账 (FINANCE LEDGER) ── -->
+          <div v-if="activeTab === 'finance_ledger'" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- 收支一览 -->
+            <div class="glass-panel lg:col-span-2 space-y-6">
+              <h3 class="font-bold text-base text-slate-200">资金开票与收付款台账簿</h3>
+
+              <div class="overflow-x-auto border border-slate-800 rounded-xl">
+                <table class="table-cyber">
+                  <thead>
+                    <tr>
+                      <th>编码</th>
+                      <th>项目名称</th>
+                      <th>合同金额</th>
+                      <th>累计开票</th>
+                      <th>累计回款</th>
+                      <th>待收余额</th>
+                      <th>资金账项</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="proj in projects.filter(p => ['已立项', '已结项'].includes(p.status))">
+                      <td class="font-mono text-cyan-400 text-xs">{{ proj.code }}</td>
+                      <td>
+                        <div class="font-bold text-xs text-slate-100">{{ proj.name }}</div>
+                      </td>
+                      <td class="text-slate-300 font-semibold text-xs">¥ {{ proj.amount.toLocaleString() }}</td>
+                      <td class="text-purple-400 font-semibold text-xs">¥ {{ totalInvoiced(proj).toLocaleString() }}</td>
+                      <td class="text-emerald-400 font-semibold text-xs">¥ {{ totalPaid(proj).toLocaleString() }}</td>
+                      <td class="text-amber-500 font-semibold text-xs">¥ {{ Math.max(0, totalInvoiced(proj) - totalPaid(proj)).toLocaleString() }}</td>
+                      <td>
+                        <button @click="triggerRecordFinance(proj)" class="text-xs px-3 py-1.5 bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 rounded border border-cyan-500/20">
+                          资金记账
+                        </button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- 收支登记侧面板 -->
+            <div class="glass-panel space-y-6">
+              <div v-if="!selectedProjectForFinance" class="text-center py-20 text-slate-500">
+                <i class="fa-solid fa-receipt text-5xl mb-4"></i>
+                <p class="text-xs">请在左侧列表中选定要记账的项目，进入资金入账/发票开具操作台面板。</p>
+              </div>
+
+              <div v-else class="space-y-6">
+                <!-- 头部概要 -->
+                <div class="p-4 rounded-xl bg-slate-900 border border-slate-800">
+                  <h4 class="font-bold text-sm text-cyan-400">{{ selectedProjectForFinance.name }}</h4>
+                  <p class="text-[10px] text-slate-500 font-mono mt-1">立项编码: {{ selectedProjectForFinance.code }}</p>
+                  
+                  <div class="grid grid-cols-2 gap-2 mt-4 text-xs">
+                    <div>开票占比: <b class="text-purple-400">{{ ((totalInvoiced(selectedProjectForFinance)/selectedProjectForFinance.amount)*100).toFixed(1) }}%</b></div>
+                    <div>回款比例: <b class="text-emerald-400">{{ totalInvoiced(selectedProjectForFinance) > 0 ? ((totalPaid(selectedProjectForFinance)/totalInvoiced(selectedProjectForFinance))*100).toFixed(1) : 0 }}%</b></div>
+                  </div>
+                </div>
+
+                <!-- 1. 发票登记 -->
+                <div class="space-y-3 border-t border-slate-800 pt-4">
+                  <h4 class="font-bold text-xs text-slate-350">登记开具发票 (自动进行要素 OCR 标记)</h4>
+                  <div class="grid grid-cols-2 gap-2">
+                    <div class="flex flex-col gap-1">
+                      <label class="text-[10px] text-slate-500">开票金额（元）</label>
+                      <input v-model="tempInvoice.amount" type="number" class="input-cyber py-1.5 text-xs" placeholder="0.00">
+                    </div>
+                    <div class="flex flex-col gap-1">
+                      <label class="text-[10px] text-slate-500">发票唯一编码</label>
+                      <input v-model="tempInvoice.code" class="input-cyber py-1.5 text-xs" placeholder="INV-代码">
+                    </div>
+                  </div>
+                  <div class="flex gap-2">
+                    <input v-model="tempInvoice.date" type="date" class="input-cyber py-1.5 text-xs flex-1">
+                    <button @click="recordInvoice" class="btn-cyber btn-cyber-primary py-1.5 text-xs px-3">登记发票</button>
+                  </div>
+                </div>
+
+                <!-- 2. 回款登记 -->
+                <div class="space-y-3 border-t border-slate-800 pt-4">
+                  <h4 class="font-bold text-xs text-slate-350">登记到账回款</h4>
+                  <div class="grid grid-cols-2 gap-2">
+                    <div class="flex flex-col gap-1">
+                      <label class="text-[10px] text-slate-500">回款金额（元）</label>
+                      <input v-model="tempPayment.amount" type="number" class="input-cyber py-1.5 text-xs" placeholder="0.00">
+                    </div>
+                    <div class="flex flex-col gap-1">
+                      <label class="text-[10px] text-slate-500">回款方式</label>
+                      <select v-model="tempPayment.method" class="input-cyber py-1.5 text-xs bg-slate-900">
+                        <option>银行转账</option>
+                        <option>支付宝商户</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="flex gap-2">
+                    <input v-model="tempPayment.date" type="date" class="input-cyber py-1.5 text-xs flex-1">
+                    <button @click="recordPayment" class="btn-cyber btn-cyber-secondary py-1.5 text-xs px-3">记回款项</button>
+                  </div>
+                </div>
+
+                <!-- 资金流水一览 -->
+                <div class="border-t border-slate-800 pt-4">
+                  <h4 class="font-bold text-xs text-slate-350 mb-2">项目实收收支流水明细</h4>
+                  <div class="max-h-40 overflow-y-auto space-y-2 text-xs">
+                    <div v-for="inv in selectedProjectForFinance.invoices" class="flex justify-between p-2.5 rounded-lg bg-purple-950/20 border border-purple-500/20 text-purple-300 font-mono">
+                      <span>发票记录: {{ inv.code }}</span>
+                      <span>+ ¥{{ inv.amount.toLocaleString() }}</span>
+                    </div>
+                    <div v-for="pay in selectedProjectForFinance.payments" class="flex justify-between p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-500/20 text-emerald-300 font-mono">
+                      <span>已收回款: {{ pay.method }}</span>
+                      <span>+ ¥{{ pay.amount.toLocaleString() }}</span>
+                    </div>
+                    <div v-if="(selectedProjectForFinance.invoices?.length || 0) + (selectedProjectForFinance.payments?.length || 0) === 0" class="text-slate-600 text-center py-4">
+                      暂无实收账单流水记录。
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+          </div>
+
+          <!-- ── 模块 6: 立项终审中心 (ADMIN) ── -->
+          <div v-if="activeTab === 'audit'" class="glass-panel p-6 space-y-6">
+            <h3 class="font-bold text-base text-slate-200">待审批立项合同申请列表</h3>
+            
+            <div class="overflow-x-auto border border-slate-800 rounded-xl">
+              <table class="table-cyber">
+                <thead>
+                  <tr>
+                    <th>立项编号</th>
+                    <th>项目名称</th>
+                    <th>甲方客户</th>
+                    <th>合同额</th>
+                    <th>申请人</th>
+                    <th>带印章 PDF</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="proj in pendingAuditProjects">
+                    <td class="font-mono text-cyan-400">{{ proj.code }}</td>
+                    <td class="font-bold text-sm">{{ proj.name }}</td>
+                    <td>{{ proj.client }}</td>
+                    <td class="text-emerald-400 font-bold">¥ {{ proj.amount.toLocaleString() }}</td>
+                    <td>{{ proj.created_by }}</td>
+                    <td>
+                      <a href="#" @click.prevent class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 hover:border-red-500/40 font-mono text-[11px] transition-all duration-300">
+                        <i class="fa-solid fa-file-pdf text-xs"></i>
+                        <span>{{ proj.contractFile }}</span>
+                        <i class="fa-solid fa-arrow-up-right-from-square text-[9px] opacity-70"></i>
+                      </a>
+                    </td>
+                    <td>
+                      <button @click="openAuditDetails(proj)" class="text-xs px-3.5 py-1.5 bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 rounded border border-amber-500/30">
+                        查看提取比对并评审
+                      </button>
+                    </td>
+                  </tr>
+                  <tr v-if="pendingAuditProjects.length === 0">
+                    <td colspan="7" class="text-center text-slate-500 py-12">
+                      <i class="fa-solid fa-clipboard-check text-5xl mb-3 block"></i>
+                      暂无等待您审核的立项申请。
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- 立项终审详细校对面板 -->
+            <div v-if="reviewProject" class="glass-panel-elevated p-6 space-y-6 mt-6 border border-slate-700">
+              <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h4 class="font-bold text-base text-slate-100">审查立项合同明细项: {{ reviewProject.name }}</h4>
+                <button @click="reviewProject = null" class="text-slate-400 hover:text-slate-350"><i class="fa-solid fa-xmark"></i></button>
+              </div>
+
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs leading-relaxed">
+                <div>客户名称: <b class="text-slate-200">{{ reviewProject.client }}</b></div>
+                <div>合同编号: <b class="text-slate-200 font-mono">{{ reviewProject.code }}</b></div>
+                <div>合同金额: <b class="text-emerald-400">¥ {{ reviewProject.amount.toLocaleString() }}</b></div>
+                <div>签订日期: <b class="text-slate-200 font-mono">{{ reviewProject.date }}</b></div>
+              </div>
+
+              <!-- OCR 报告备注 -->
+              <div class="border border-slate-850 p-4 rounded-xl space-y-2 bg-slate-950/50">
+                <h5 class="text-xs font-bold text-slate-300">系统 PaddleOCR 双本差异核准记录</h5>
+                <p class="text-[11px] text-slate-500">登记发起人已确认勾选并核准了全部合同金额及日期格式差异，并提交以下说明：</p>
+                <div class="p-3.5 rounded bg-slate-900/30 font-mono text-[11px] text-cyan-400">
+                  "金额与签订日期提取差异，判定为字符编码和书写格式问题，数据实际吻合，确认通过。"
+                </div>
+              </div>
+
+              <!-- 驳回意见输入 -->
+              <div class="flex flex-col gap-2">
+                <label class="text-xs text-slate-400">驳回反馈意见（驳回申请时为必填项）</label>
+                <input v-model="adminRejectReason" class="input-cyber text-xs" placeholder="若在此处点击驳回，必须在此栏输入具体驳回修正原因，以反馈商务人员重新上传">
+              </div>
+
+              <!-- 审核动作按钮 -->
+              <div class="flex justify-end gap-3 border-t border-slate-800 pt-5">
+                <button @click="auditProject('已驳回')" class="btn-cyber btn-cyber-muted text-rose-400 hover:bg-rose-500/10">驳回申请</button>
+                <button @click="auditProject('已立项')" class="btn-cyber btn-cyber-primary">审核通过（项目生效）</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── 模块 7: 项目结项复核 (CLOSE AUDIT) ── -->
+          <div v-if="activeTab === 'close_audit'" class="glass-panel p-6 space-y-6">
+            <h3 class="font-bold text-base text-slate-200">待财务结项复核审计列表</h3>
+
+            <div class="overflow-x-auto border border-slate-800 rounded-xl">
+              <table class="table-cyber">
+                <thead>
+                  <tr>
+                    <th>立项编号</th>
+                    <th>工程项目名称</th>
+                    <th>项目经理</th>
+                    <th>合同金额</th>
+                    <th>累计收到回款</th>
+                    <th>应收未收余额</th>
+                    <th>验收/完工报告</th>
+                    <th>结项控制</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="proj in pendingCloseProjects">
+                    <td class="font-mono text-cyan-400">{{ proj.code }}</td>
+                    <td class="font-bold">{{ proj.name }}</td>
+                    <td>{{ proj.pm }}</td>
+                    <td class="font-semibold">¥ {{ proj.amount.toLocaleString() }}</td>
+                    <td class="text-emerald-400 font-semibold">¥ {{ totalPaid(proj).toLocaleString() }}</td>
+                    <td class="text-rose-400 font-semibold">¥ {{ Math.max(0, proj.amount - totalPaid(proj)).toLocaleString() }}</td>
+                    <td>
+                      <a href="#" @click.prevent class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/20 hover:border-cyan-500/40 font-mono text-[11px] transition-all duration-300">
+                        <i class="fa-solid fa-file-circle-check text-xs"></i>
+                        <span>{{ proj.acceptanceReport }}</span>
+                        <i class="fa-solid fa-arrow-up-right-from-square text-[9px] opacity-70"></i>
+                      </a>
+                    </td>
+                    <td>
+                      <div class="flex gap-2">
+                        <button @click="auditProjectClosing(proj, true)" class="text-xs px-3.5 py-1.5 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded border border-emerald-500/30">
+                          批准结项
+                        </button>
+                        <button @click="auditProjectClosing(proj, false)" class="text-xs px-3.5 py-1.5 bg-rose-500/20 text-rose-400 hover:bg-rose-500/30 rounded border border-rose-500/30">
+                          退回修改
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr v-if="pendingCloseProjects.length === 0">
+                    <td colspan="8" class="text-center text-slate-500 py-12">
+                      <i class="fa-solid fa-circle-check text-5xl mb-3 block text-slate-700"></i>
+                      暂无等待财务复核的项目。当项目经理上传“完工验收报告”后将自动流转至此。
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- ── 模块 8: 账户与权限分配 (USERS) ── -->
+          <div v-if="activeTab === 'users'" class="glass-panel p-6 space-y-6">
+            <h3 class="font-bold text-base text-slate-200">系统用户成员权限控制</h3>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+              
+              <!-- 用户录入 -->
+              <div class="glass-panel p-5 space-y-4 h-fit">
+                <h4 class="font-bold text-sm text-slate-300">注册并授权新用户</h4>
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs text-slate-500">登录账号 (Username)</label>
+                  <input v-model="newUserForm.username" class="input-cyber py-1.5 text-xs" placeholder="例如: pm_wang">
+                </div>
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs text-slate-500">真实姓名</label>
+                  <input v-model="newUserForm.name" class="input-cyber py-1.5 text-xs" placeholder="例如: 王小明">
+                </div>
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs text-slate-500">指派业务角色</label>
+                  <select v-model="newUserForm.role" class="input-cyber py-1.5 text-xs bg-slate-900">
+                    <option value="admin">系统管理员 (Admin)</option>
+                    <option value="business">商务角色 (Business)</option>
+                    <option value="finance">财务角色 (Finance)</option>
+                    <option value="pm">项目经理 (PM)</option>
+                  </select>
+                </div>
+                <button @click="addUser" class="w-full btn-cyber btn-cyber-primary justify-center text-xs py-3 mt-2">
+                  注册账户（密码默认 123456）
+                </button>
+              </div>
+
+              <!-- 列表表格 -->
+              <div class="overflow-x-auto border border-slate-800 rounded-xl md:col-span-2">
+                <table class="table-cyber">
+                  <thead>
+                    <tr>
+                      <th>登录名</th>
+                      <th>姓名</th>
+                      <th>所属角色</th>
+                      <th>状态</th>
+                      <th>账户操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="user in users">
+                      <td class="font-mono text-cyan-400">{{ user.username }}</td>
+                      <td class="font-bold">{{ user.name }}</td>
+                      <td>
+                        <span class="badge" :class="{
+                          'bg-red-500/10 text-red-400 border border-red-500/20': user.role==='admin',
+                          'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20': user.role==='business',
+                          'bg-amber-500/10 text-amber-400 border border-amber-500/20': user.role==='pm',
+                          'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20': user.role==='finance'
+                        }">{{ user.role === 'admin' ? '系统管理员' : user.role === 'business' ? '商务经理' : user.role === 'finance' ? '财务总监' : '项目经理' }}</span>
+                      </td>
+                      <td>
+                        <span :class="user.active ? 'text-emerald-400' : 'text-slate-500'" class="text-xs font-bold">
+                          ● {{ user.active ? '正常运行中' : '已被冻结挂起' }}
+                        </span>
+                      </td>
+                      <td>
+                        <button @click="toggleUserActive(user)" :class="user.active ? 'text-rose-400 hover:text-rose-300' : 'text-emerald-400 hover:text-emerald-300'" class="text-xs">
+                          {{ user.active ? '冻结账户' : '解冻恢复' }}
+                        </button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- ── 模块 9: 数据字典维护 (DICT) ── -->
+          <div v-if="activeTab === 'dict'" class="glass-panel p-6 space-y-6">
+            <h3 class="font-bold text-base text-slate-200">系统通用字典项配置</h3>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+              
+              <!-- 录入字典 -->
+              <div class="glass-panel p-5 space-y-4 h-fit">
+                <h4 class="font-bold text-sm text-slate-300">新增字典参数配置</h4>
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs text-slate-500">选择对应大分类</label>
+                  <select v-model="newDictType" class="input-cyber py-1.5 text-xs bg-slate-900">
+                    <option value="PROJECT_TYPE">项目类型 (PROJECT_TYPE)</option>
+                    <option value="PAYMENT_METHOD">回款方式 (PAYMENT_METHOD)</option>
+                  </select>
+                </div>
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs text-slate-500">配置唯一代号 (Code)</label>
+                  <input v-model="newDictCode" class="input-cyber py-1.5 text-xs" placeholder="例如: BIGDATA">
+                </div>
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs text-slate-500">中文描述名称 (Name)</label>
+                  <input v-model="newDictName" class="input-cyber py-1.5 text-xs" placeholder="例如: 大数据工程">
+                </div>
+                <button @click="addDictItem" class="w-full btn-cyber btn-cyber-primary justify-center text-xs py-3 mt-2">
+                  追加参数项
+                </button>
+              </div>
+
+              <!-- 字典列表 -->
+              <div class="overflow-x-auto border border-slate-800 rounded-xl md:col-span-2">
+                <table class="table-cyber">
+                  <thead>
+                    <tr>
+                      <th>大分类</th>
+                      <th>唯一代号</th>
+                      <th>显示值 (Name)</th>
+                      <th>排序</th>
+                      <th>删除</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="item in dictItems">
+                      <td class="text-slate-400 text-xs">{{ item.typeCode }}</td>
+                      <td class="font-mono text-cyan-400 text-xs">{{ item.code }}</td>
+                      <td class="font-bold">{{ item.name }}</td>
+                      <td class="text-xs">{{ item.order }}</td>
+                      <td>
+                        <button @click="deleteDictItem(item.id)" class="text-rose-400 hover:text-rose-300 text-xs"><i class="fa-solid fa-trash"></i></button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+      </main>
+
+    </div>
+
+    <!-- ── 结项验收报告上传浮窗 (项目经理端) ── -->
+    <div v-if="showAcceptanceReportModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="glass-panel-elevated p-6 w-full max-w-md space-y-6 border border-slate-700">
+        <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+          <h4 class="font-bold text-base text-slate-200">上传完工验收报告发起结项申请</h4>
+          <button @click="showAcceptanceReportModal = null" class="text-slate-500 hover:text-slate-400"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <p class="text-xs text-slate-400">
+          结项工程项目名称: <b>{{ showAcceptanceReportModal.name }}</b>
+        </p>
+
+        <!-- 完工文档归档框 -->
+        <div class="p-10 border border-dashed border-slate-800 hover:border-cyan-400 text-center rounded-xl cursor-pointer hover:bg-cyan-500/5 transition-all">
+          <i class="fa-solid fa-file-signature text-4xl text-slate-500 mb-3"></i>
+          <p class="text-xs text-slate-200">{{ mockReportFileName }}</p>
+          <p class="text-[10px] text-slate-650 mt-1">系统已默认拟定一份项目验收完工终审书</p>
+        </div>
+
+        <div class="flex justify-end gap-3 pt-3 border-t border-slate-800">
+          <button @click="showAcceptanceReportModal = null" class="btn-cyber btn-cyber-muted">取消</button>
+          <button @click="submitClosingRequest(showAcceptanceReportModal)" class="btn-cyber btn-cyber-primary">确认并提起结项申请</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 主要 Vue 运行逻辑 -->
+  <script src="app.js"></script>
+</body>
+</html>
