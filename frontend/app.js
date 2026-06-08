@@ -339,7 +339,12 @@ createApp({
       localStorage.removeItem('pm_current_user');
       localStorage.removeItem('pm_active_tab');
       activeTab.value = 'dashboard';
-      animateLogin();
+      // 等 Vue 渲染完登录表单后再执行动画
+      nextTick(() => {
+        // 清除可能残留的 GSAP 样式
+        gsap.set('.space-grid-bg, .inline-flex, h1, p, .glass-panel.max-w-md', { clearProps: 'all' });
+        animateLogin();
+      });
     };
 
     // ── 权限强分离控制 ──
