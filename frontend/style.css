@@ -23,7 +23,7 @@
   --danger-glow: rgba(255, 23, 68, 0.2);
   
   --text-primary: #f5f7fa;
-  --text-muted: #8c9ba5;
+  --text-muted: #aab6c2; /* 提升次级文字对比度，满足 WCAG 4.5:1（原 #8c9ba5 在玻璃面板上偏低） */
   --text-dark: #0f1115;
 }
 
@@ -34,8 +34,8 @@
 }
 
 html, body {
-  height: 100vh;
-  overflow: hidden;
+  min-height: 100vh;
+  overflow-x: hidden; /* 仅锁定横向滚动；纵向允许滚动，避免短屏/移动端内容被裁剪无法触达 */
 }
 
 body {
@@ -96,9 +96,9 @@ body {
 }
 
 .glass-panel {
-  background: rgba(8, 10, 16, 0.12); /* 极其透明底色，最大化显现星系背景 */
-  backdrop-filter: blur(12px); /* 轻微模糊保障文字辨识度 */
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(13, 17, 28, 0.72); /* 保留玻璃质感，但底色足够不透明以保证文字/输入框可读性 */
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border: 1px solid rgba(0, 242, 254, 0.15);
   border-radius: 16px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
@@ -107,13 +107,13 @@ body {
 }
 
 .glass-panel:hover {
-  background: rgba(8, 10, 16, 0.28); /* 悬浮时稍加深，聚焦视线 */
+  background: rgba(13, 17, 28, 0.82); /* 悬浮时稍加深，聚焦视线 */
   border-color: rgba(0, 242, 254, 0.45) !important;
   box-shadow: 0 15px 35px rgba(0, 242, 254, 0.15) !important;
 }
 
 .glass-panel-elevated {
-  background: rgba(12, 14, 24, 0.18); /* 极其透明底色 */
+  background: rgba(18, 21, 34, 0.78); /* 不透明度提升，保证弹层内文字可读 */
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(127, 0, 255, 0.2);
@@ -124,7 +124,7 @@ body {
 }
 
 .glass-panel-elevated:hover {
-  background: rgba(12, 14, 24, 0.32);
+  background: rgba(18, 21, 34, 0.86);
   border-color: rgba(127, 0, 255, 0.45) !important;
   box-shadow: 0 20px 45px rgba(127, 0, 255, 0.2) !important;
 }

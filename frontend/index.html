@@ -145,8 +145,15 @@
     <!-- ── 2. 主体工作空间 (权限强分离 & 宽敞排版) ── -->
     <div v-else class="flex-1 flex overflow-hidden">
       
-      <!-- 侧边栏菜单 (中文显示 - 结构优化：内容自适应滚动，底部信息固定不滚动) -->
-      <aside class="w-72 glass-panel m-4 mr-0 flex flex-col shrink-0 border-r border-slate-800 overflow-hidden">
+      <!-- 移动端抽屉遮罩层 -->
+      <div v-if="sidebarOpen" @click="sidebarOpen = false"
+           class="fixed inset-0 bg-black/60 z-30 md:hidden"></div>
+
+      <!-- 侧边栏菜单：移动端为左侧抽屉(可滑入/滑出)，md 及以上恢复为常驻浮动面板 -->
+      <aside :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'"
+             class="w-72 glass-panel flex flex-col shrink-0 border-r border-slate-800 overflow-hidden
+                    fixed inset-y-0 left-0 z-40 rounded-none transition-transform duration-300
+                    md:static md:z-auto md:m-4 md:mr-0 md:rounded-2xl">
         
         <!-- 系统标识 -->
         <div class="p-5 border-b border-slate-800 flex items-center gap-3 shrink-0">
@@ -264,6 +271,10 @@
         <!-- 顶栏状态监控 -->
         <header class="glass-panel mb-4 flex items-center justify-between shadow-md">
           <div class="flex items-center gap-3">
+            <button @click="sidebarOpen = true" aria-label="打开导航菜单"
+                    class="md:hidden text-slate-300 hover:text-cyan-300 text-xl leading-none cursor-pointer">
+              <i class="fa-solid fa-bars"></i>
+            </button>
             <h2 class="text-xl font-bold text-slate-100">
               {{ activeTab === 'dashboard' ? '数据大屏看板' : activeTab === 'register' ? (activeEditProject ? '修改并重新提交立项' : '智能立项登记') : activeTab === 'projects' ? '项目档案中心' : activeTab === 'audit' ? '立项终审中心' : activeTab === 'pm_projects' ? '项目进度跟踪' : activeTab === 'finance_ledger' ? '财务收支台账' : activeTab === 'close_audit' ? '项目结项复核' : activeTab === 'users' ? '账户与权限分配' : '字典参数设置' }}
             </h2>

@@ -8,6 +8,8 @@ createApp({
     const currentUser = ref(null);
     const activeTab = ref(localStorage.getItem('pm_active_tab') || 'dashboard');
     const terminalLogs = ref([]);
+    // 移动端侧边栏抽屉开关
+    const sidebarOpen = ref(false);
 
     // 登录表单模型
     const loginForm = ref({
@@ -283,22 +285,20 @@ createApp({
       currentUser.value = found;
       localStorage.setItem('pm_current_user', JSON.stringify(found));
 
-      // 同步认证后端 API 获取 JWT token
+      // 同步认证后端 API，获取并缓存 JWT（access + refresh），供需要鉴权的接口使用
       try {
-        const tokenRes = await fetch(`${API_BASE}/auth/login`, {
+        const tokenData = await api('/auth/login', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: found.username, password: loginForm.value.password }),
+          body: { username: found.username, password: loginForm.value.password },
         });
-        if (tokenRes.ok) {
-          const tokenData = await tokenRes.json();
-          localStorage.setItem('pm_token', tokenData.access_token);
-          addLog('系统', `后端 API 认证成功，Token 已缓存。`);
-        } else {
-          addLog('系统', `后端 API 认证未通过，文件上传功能可能不可用。`);
-        }
+        localStorage.setItem('pm_token', tokenData.access_token);
+        if (tokenData.refresh_token) localStorage.setItem('pm_refresh_token', tokenData.refresh_token);
+        addLog('系统', `后端 API 认证成功，Token 已缓存。`);
       } catch (e) {
-        addLog('系统', `后端 API 连接失败: ${e.message}，文件上传功能可能不可用。`);
+        // 后端认证失败（如账号不同步）：清除旧 Token，明确提示而非静默吞掉
+        localStorage.removeItem('pm_token');
+        localStorage.removeItem('pm_refresh_token');
+        addLog('安全', `后端 API 认证未通过（${e.message}）：文件上传等需鉴权功能将不可用，请核对账号密码与后端是否一致。`);
       }
 
       addLog('系统', `登录成功。工作舱已绑定用户：${found.name}（角色：${found.role.toUpperCase()}）`);
@@ -336,8 +336,10 @@ createApp({
     const logout = () => {
       addLog('系统', `用户 "${currentUser.value?.name}" 已安全断开会话连接。`);
       currentUser.value = null;
-      localStorage.removeItem('pm_current_user');
-      localStorage.removeItem('pm_active_tab');
+      // 清理整个会话：包括后端 JWT，避免登出后残留可用 Token
+      ['pm_current_user', 'pm_active_tab', 'pm_token', 'pm_refresh_token']
+        .forEach((k) => localStorage.removeItem(k));
+      sidebarOpen.value = false;
       activeTab.value = 'dashboard';
       // 等 Vue 渲染完登录表单后再执行动画
       nextTick(() => {
@@ -414,9 +416,61 @@ createApp({
     // 获取认证头
     const getAuthHeaders = () => {
       const token = localStorage.getItem('pm_token');
-      const headers = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-      return headers;
+      return token ? { Authorization: `Bearer ${token}` } : {};
+    };
+
+    // 用 refresh_token 静默续期 access_token，成功返回 true
+    const tryRefresh = async () => {
+      const refresh = localStorage.getItem('pm_refresh_token');
+      if (!refresh) return false;
+      try {
+        const res = await fetch(`${API_BASE}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: refresh }),
+        });
+        if (!res.ok) return false;
+        const data = await res.json();
+        localStorage.setItem('pm_token', data.access_token);
+        if (data.refresh_token) localStorage.setItem('pm_refresh_token', data.refresh_token);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    // ── 统一后端请求层 ──
+    // 自动注入鉴权头；遇 401 用 refresh_token 续期并重试一次；
+    // 规范化错误为 Error(message)（读取后端真实的 message 字段）。
+    const api = async (path, { method = 'GET', body, isForm = false, _retried = false } = {}) => {
+      const headers = { ...getAuthHeaders() };
+      if (body != null && !isForm) headers['Content-Type'] = 'application/json';
+      const payload = isForm ? body : (body != null ? JSON.stringify(body) : undefined);
+
+      let res;
+      try {
+        res = await fetch(`${API_BASE}${path}`, { method, headers, body: payload });
+      } catch (e) {
+        throw Object.assign(new Error('网络连接失败，请检查后端服务是否可用'), { status: 0 });
+      }
+
+      // access_token 失效：尝试续期后重试一次；失败则登出
+      if (res.status === 401 && !_retried && !path.includes('/auth/')) {
+        if (await tryRefresh()) {
+          return api(path, { method, body, isForm, _retried: true });
+        }
+        logout();
+        throw Object.assign(new Error('登录状态已过期，请重新登录'), { status: 401 });
+      }
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw Object.assign(
+          new Error(data.message || data.detail || `请求失败 (${res.status})`),
+          { status: res.status, code: data.code },
+        );
+      }
+      return res.status === 204 ? null : res.json().catch(() => null);
     };
 
     // 当前项目ID（用于上传文件）
@@ -446,10 +500,9 @@ createApp({
 
       try {
         // 先创建项目草稿
-        const projRes = await fetch(`${API_BASE}/projects/register`, {
+        const projData = await api('/projects/register', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-          body: JSON.stringify({
+          body: {
             project_name: '待识别项目',
             contract_no: null,
             contract_amount: null,
@@ -457,15 +510,8 @@ createApp({
             project_type: null,
             sign_date: null,
             description: null,
-          }),
+          },
         });
-
-        if (!projRes.ok) {
-          const err = await projRes.json().catch(() => ({}));
-          throw new Error(err.detail || err.message || '创建项目失败');
-        }
-
-        const projData = await projRes.json();
         currentProjectId.value = projData.id;
         addLog('数据库', `项目草稿已创建，ID: ${projData.id}`);
 
@@ -475,18 +521,11 @@ createApp({
 
         addLog('OCR扫描', '正在解析 Word 合同文本... 抓取参数: [项目名称]、[项目金额]、[合同编号]、[签订日期]');
 
-        const uploadRes = await fetch(`${API_BASE}/projects/${projData.id}/upload-word`, {
+        const uploadData = await api(`/projects/${projData.id}/upload-word`, {
           method: 'POST',
-          headers: getAuthHeaders(),
           body: formData,
+          isForm: true,
         });
-
-        if (!uploadRes.ok) {
-          const err = await uploadRes.json().catch(() => ({}));
-          throw new Error(err.detail || err.message || '上传失败');
-        }
-
-        const uploadData = await uploadRes.json();
         const extracted = uploadData.ocr_result?.extracted || {};
 
         // 自动提取信息回填表单
@@ -502,16 +541,15 @@ createApp({
 
         // 更新项目名称（回填后同步到后端）
         if (extracted.project_name) {
-          await fetch(`${API_BASE}/projects/${projData.id}`, {
+          await api(`/projects/${projData.id}`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-            body: JSON.stringify({
+            body: {
               project_name: extracted.project_name,
               contract_no: extracted.contract_no || null,
               contract_amount: extracted.contract_amount ? parseFloat(extracted.contract_amount) : null,
               customer_name: extracted.customer_name || null,
               sign_date: extracted.sign_date || null,
-            }),
+            },
           }).catch(() => {});
         }
 
@@ -556,18 +594,11 @@ createApp({
         const formData = new FormData();
         formData.append('file', file);
 
-        const uploadRes = await fetch(`${API_BASE}/projects/${currentProjectId.value}/upload-pdf`, {
+        const uploadData = await api(`/projects/${currentProjectId.value}/upload-pdf`, {
           method: 'POST',
-          headers: getAuthHeaders(),
           body: formData,
+          isForm: true,
         });
-
-        if (!uploadRes.ok) {
-          const err = await uploadRes.json().catch(() => ({}));
-          throw new Error(err.detail || err.message || '上传失败');
-        }
-
-        const uploadData = await uploadRes.json();
         formProject.value.contractFile = file.name;
         formProject.value.contractVersion = uploadData.version || 1;
 
@@ -617,17 +648,7 @@ createApp({
 
       // 调用后端校验接口
       try {
-        const res = await fetch(`${API_BASE}/projects/${currentProjectId.value}/verify`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-        });
-
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.detail || err.message || '校验失败');
-        }
-
-        const data = await res.json();
+        const data = await api(`/projects/${currentProjectId.value}/verify`, { method: 'POST' });
         verifyDiffs.value = data.diffs || [];
 
         if (verifyDiffs.value.length === 0) {
@@ -726,29 +747,20 @@ createApp({
 
       try {
         // 更新项目信息到后端
-        await fetch(`${API_BASE}/projects/${currentProjectId.value}`, {
+        await api(`/projects/${currentProjectId.value}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-          body: JSON.stringify({
+          body: {
             project_name: formProject.value.name,
             contract_no: formProject.value.code || null,
             contract_amount: formProject.value.amount || null,
             customer_name: formProject.value.client || null,
             sign_date: formProject.value.date || null,
             description: formProject.value.description || null,
-          }),
+          },
         }).catch(() => {});
 
         // 提交立项申请
-        const res = await fetch(`${API_BASE}/projects/${currentProjectId.value}/submit`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-        });
-
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.detail || err.message || '提交失败');
-        }
+        await api(`/projects/${currentProjectId.value}/submit`, { method: 'POST' });
 
         addLog('数据库', `项目”${formProject.value.name}”立项已发起，提交审核流。当前等待管理员终审。`);
 
@@ -1328,6 +1340,9 @@ createApp({
     };
 
     const animateDashboard = () => {
+      // 已登出时不执行仪表盘动画：其 killTweensOf('.glass-panel') 会误杀登录卡片
+      // (.glass-panel.max-w-md) 的入场动画，导致登录表单停在 opacity:0 而消失。
+      if (!currentUser.value) return;
       nextTick(() => {
         gsap.killTweensOf('.tilt-card, .glass-panel');
         
@@ -1365,7 +1380,11 @@ createApp({
 
     // 监听导航菜单切换动效
     watch(activeTab, (newTab) => {
+      // 登出会把 activeTab 重置为 'dashboard'，此时无登录用户：
+      // 跳过持久化与一切动画，避免 .glass-panel 系列动画/killTweens 干扰登录卡片入场。
+      if (!currentUser.value) return;
       localStorage.setItem('pm_active_tab', newTab);
+      sidebarOpen.value = false; // 移动端：切换菜单后自动收起抽屉
       if (newTab === 'dashboard') {
         animateDashboard();
       } else {
@@ -1640,6 +1659,7 @@ createApp({
     return {
       currentUser,
       activeTab,
+      sidebarOpen,
       terminalLogs,
       projects,
       users,
