@@ -279,17 +279,15 @@ CREATE TABLE IF NOT EXISTS `system_config` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
---  初始数据：默认管理员账户
---  密码: admin123 (bcrypt 哈希)
+--  初始数据：默认用户（原型页面演示账号）
+--  所有账号密码均为: 123456 (bcrypt 哈希)
 -- ============================================================
-INSERT INTO `users` (`username`, `password_hash`, `real_name`, `role`, `status`)
-VALUES (
-    'admin',
-    '$2b$12$dYRUZMoQyiFFIjMoF8ljR.2k.I5lDgwWBq2hKyZEKOSSwO86nECh.',
-    '系统管理员',
-    'admin',
-    1
-) ON DUPLICATE KEY UPDATE `username` = `username`;
+INSERT INTO `users` (`username`, `password_hash`, `real_name`, `role`, `status`) VALUES
+('admin',    '$2b$12$K8eTu5n.ywZzV5Q5UEMqNesubj5pw8CNSxtGWs405wmq10Zp.Acji', '系统管理员',    'admin',    1),
+('business', '$2b$12$K8eTu5n.ywZzV5Q5UEMqNesubj5pw8CNSxtGWs405wmq10Zp.Acji', '张三（商务经理）', 'business', 1),
+('finance',  '$2b$12$K8eTu5n.ywZzV5Q5UEMqNesubj5pw8CNSxtGWs405wmq10Zp.Acji', '李四（财务总监）', 'finance',  1),
+('pm',       '$2b$12$K8eTu5n.ywZzV5Q5UEMqNesubj5pw8CNSxtGWs405wmq10Zp.Acji', '王五（项目经理）', 'pm',       1)
+ON DUPLICATE KEY UPDATE `password_hash` = VALUES(`password_hash`);
 
 -- ============================================================
 --  初始数据：系统默认配置
