@@ -173,8 +173,8 @@
           </div>
         </el-card>
 
-        <!-- 操作按钮 -->
-        <el-card v-if="project.status === 'draft'" shadow="never">
+        <!-- 操作按钮（仅商务/管理员可提交立项，避免项目经理点击后被后端拒绝） -->
+        <el-card v-if="project.status === 'draft' && canSubmit" shadow="never">
           <div style="display: flex; justify-content: flex-end; gap: 12px">
             <el-button type="primary" :loading="submitting" @click="handleSubmitProject">
               提交立项申请
@@ -256,21 +256,25 @@ function typeLabel(t) { return typeMap[t] || t || '-' }
 function fieldLabel(f) { return fieldMap[f] || f }
 function diffTypeLabel(d) { return diffTypeMap[d] || d }
 
-// 加载项目信息
+// 当前角色是否可以提交立项（与后端 submit 接口的 business/admin 限制一致）
+const canSubmit = computed(() =>
+  ['admin', 'business'].includes(userStore.userInfo?.role)
+)
+
+// 加载项目信息（错误提示由 axios 拦截器统一处理，这里只负责兜底跳转）
 async function loadProject() {
   pageLoading.value = true
   try {
     const res = await getProject(projectId)
     Object.assign(project, res)
   } catch (e) {
-    ElMessage.error('加载项目失败')
     router.push('/projects')
   } finally {
     pageLoading.value = false
   }
 }
 
-// 选择 Word 文件后自动上传解析
+// 选择 Word 文件后自动上传解析（失败原因由拦截器统一弹出）
 async function onWordFileSelected(e) {
   const file = e.target.files[0]
   if (!file) return
@@ -282,8 +286,6 @@ async function onWordFileSelected(e) {
       Object.assign(project, res.project)
     }
     ElMessage.success('Word 合同解析完成，已自动提取并回填项目信息')
-  } catch (e) {
-    ElMessage.error(e.response?.data?.detail || '上传失败')
   } finally {
     wordUploading.value = false
     e.target.value = ''
@@ -299,8 +301,6 @@ async function onPdfFileSelected(e) {
     const res = await uploadPdfContract(projectId, file)
     ocrResult.value = res.ocr_result
     ElMessage.success(`PDF 合同 OCR 识别完成（版本 v${res.version}）`)
-  } catch (e) {
-    ElMessage.error(e.response?.data?.detail || '上传失败')
   } finally {
     pdfUploading.value = false
     e.target.value = ''
@@ -318,8 +318,6 @@ async function handleVerify() {
     } else {
       ElMessage.warning(`发现 ${res.diffs.length} 处差异`)
     }
-  } catch (e) {
-    ElMessage.error(e.response?.data?.detail || '校验失败，请先上传 PDF 合同')
   } finally {
     verifying.value = false
   }
@@ -332,8 +330,6 @@ async function handleSubmitProject() {
     await submitProject(projectId)
     project.status = 'pending_audit'
     ElMessage.success('立项申请已提交')
-  } catch (e) {
-    ElMessage.error(e.response?.data?.detail || '提交失败')
   } finally {
     submitting.value = false
   }

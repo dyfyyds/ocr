@@ -104,7 +104,7 @@ async function handleSubmit() {
     ElMessage.success('立项登记成功')
     router.push('/projects')
   } catch (err) {
-    ElMessage.error(err.response?.data?.message || '创建项目失败')
+    // 失败原因由 axios 拦截器统一弹出
   } finally {
     loading.value = false
   }

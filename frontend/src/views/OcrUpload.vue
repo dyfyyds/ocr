@@ -86,7 +86,7 @@
 
           <!-- 操作按钮 -->
           <div style="margin-bottom: 16px; display: flex; gap: 12px">
-            <el-button type="success" @click="goToRegister">
+            <el-button v-if="canCreateProject" type="success" @click="goToRegister">
               <el-icon style="margin-right: 4px"><DocumentAdd /></el-icon>
               用此结果创建项目
             </el-button>
@@ -168,13 +168,17 @@ async function onFileSelected(e) {
     const res = await recognizeFile(file)
     ocrResult.value = res
     ElMessage.success('识别完成')
-  } catch (err) {
-    ElMessage.error(err.response?.data?.message || '识别失败')
   } finally {
+    // 失败原因由 axios 拦截器统一弹出
     recognizing.value = false
     e.target.value = ''
   }
 }
+
+// 仅商务/管理员可创建项目（与 /register 路由权限一致）
+const canCreateProject = computed(() =>
+  ['admin', 'business'].includes(userStore.userInfo?.role)
+)
 
 function goToRegister() {
   if (!ocrResult.value?.extracted) return

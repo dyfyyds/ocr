@@ -89,10 +89,14 @@ async def register_project(
 async def upload_word_contract(
     project_id: int,
     file: UploadFile = File(...),
-    user: User = Depends(require_role("business", "admin")),
+    user: User = Depends(require_role("business", "admin", "pm")),
     db: AsyncSession = Depends(get_db),
 ):
-    """上传 Word 合同 → python-docx 提取文本 → NLP 实体提取 → 自动回填项目信息。"""
+    """上传 Word 合同 → python-docx 提取文本 → NLP 实体提取 → 自动回填项目信息。
+
+    允许的角色与项目详情页（admin/business/pm）保持一致，避免项目经理
+    打开详情页却因鉴权被拒（403）。
+    """
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
@@ -160,10 +164,13 @@ async def upload_word_contract(
 async def upload_pdf_contract(
     project_id: int,
     file: UploadFile = File(...),
-    user: User = Depends(require_role("business", "admin")),
+    user: User = Depends(require_role("business", "admin", "pm")),
     db: AsyncSession = Depends(get_db),
 ):
-    """上传盖章 PDF → OCR 识别文字 → NLP 提取关键字段。"""
+    """上传盖章 PDF → OCR 识别文字 → NLP 提取关键字段。
+
+    角色与项目详情页保持一致（admin/business/pm）。
+    """
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
