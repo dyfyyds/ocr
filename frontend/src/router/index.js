@@ -28,6 +28,12 @@ const routes = [
     meta: { roles: ['admin', 'business'] },
   },
   {
+    path: '/projects/:id',
+    name: 'ProjectDetail',
+    component: () => import('../views/ProjectDetail.vue'),
+    meta: { roles: ['admin', 'business', 'pm'] },
+  },
+  {
     path: '/register',
     name: 'Register',
     component: () => import('../views/Register.vue'),
@@ -46,6 +52,12 @@ const routes = [
     meta: { roles: ['admin'] },
   },
   {
+    path: '/ocr',
+    name: 'OcrUpload',
+    component: () => import('../views/OcrUpload.vue'),
+    meta: { roles: ['admin', 'business', 'finance', 'pm'] },
+  },
+  {
     path: '/dict',
     name: 'Dict',
     component: () => import('../views/Dict.vue'),
@@ -54,12 +66,12 @@ const routes = [
 ]
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory('/app/'),
   routes,
 })
 
 // 路由守卫
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   if (to.meta.public) {
     return next()
   }
@@ -69,7 +81,15 @@ router.beforeEach((to, from, next) => {
     return next('/login')
   }
 
-  if (to.meta.roles && !to.meta.roles.includes(userStore.userInfo?.role)) {
+  if (!userStore.userInfo) {
+    await userStore.fetchUser()
+  }
+
+  if (!userStore.userInfo) {
+    return next('/login')
+  }
+
+  if (to.meta.roles && !to.meta.roles.includes(userStore.userInfo.role)) {
     return next('/dashboard')
   }
 

@@ -6,7 +6,7 @@ createApp({
   setup() {
     // ── 用户认证、权限隔离与路由状态 ──
     const currentUser = ref(null);
-    const activeTab = ref('dashboard');
+    const activeTab = ref(localStorage.getItem('pm_active_tab') || 'dashboard');
     const terminalLogs = ref([]);
 
     // 登录表单模型
@@ -250,7 +250,7 @@ createApp({
       }
     };
 
-    const handleLogin = () => {
+    const handleLogin = async () => {
       loginForm.value.error = '';
       if (!loginForm.value.username || !loginForm.value.password) {
         loginForm.value.error = '请输入用户名和密码！';
@@ -282,6 +282,25 @@ createApp({
       // 成功登录
       currentUser.value = found;
       localStorage.setItem('pm_current_user', JSON.stringify(found));
+
+      // 同步认证后端 API 获取 JWT token
+      try {
+        const tokenRes = await fetch(`${API_BASE}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: found.username, password: loginForm.value.password }),
+        });
+        if (tokenRes.ok) {
+          const tokenData = await tokenRes.json();
+          localStorage.setItem('pm_token', tokenData.access_token);
+          addLog('系统', `后端 API 认证成功，Token 已缓存。`);
+        } else {
+          addLog('系统', `后端 API 认证未通过，文件上传功能可能不可用。`);
+        }
+      } catch (e) {
+        addLog('系统', `后端 API 连接失败: ${e.message}，文件上传功能可能不可用。`);
+      }
+
       addLog('系统', `登录成功。工作舱已绑定用户：${found.name}（角色：${found.role.toUpperCase()}）`);
       
       // 根据角色分发默认工作台
@@ -318,6 +337,8 @@ createApp({
       addLog('系统', `用户 "${currentUser.value?.name}" 已安全断开会话连接。`);
       currentUser.value = null;
       localStorage.removeItem('pm_current_user');
+      localStorage.removeItem('pm_active_tab');
+      activeTab.value = 'dashboard';
       animateLogin();
     };
 
@@ -382,30 +403,131 @@ createApp({
       return projects.value.filter(p => p.status === '已立项' && p.acceptanceReport !== '');
     });
 
-    // ── 商务端 OCR 模拟 ──
-    const simulateWordOCR = () => {
+    // ── 后端 API 基础地址 ──
+    const API_BASE = '/api';
+
+    // 获取认证头
+    const getAuthHeaders = () => {
+      const token = localStorage.getItem('pm_token');
+      const headers = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      return headers;
+    };
+
+    // 当前项目ID（用于上传文件）
+    const currentProjectId = ref(null);
+
+    // ── 文件选择器工具函数 ──
+    const pickFile = (accept) => {
+      return new Promise((resolve) => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = accept;
+        input.onchange = (e) => {
+          resolve(e.target.files[0] || null);
+        };
+        input.click();
+      });
+    };
+
+    // ── Word 合同上传（真实调用后端 API） ──
+    const simulateWordOCR = async () => {
+      const file = await pickFile('.docx');
+      if (!file) return;
+
       isScanning.value = true;
       ocrSuccess.value = false;
-      addLog('OCR扫描', '正在解析 Word 合同文本... 抓取参数: [项目名称]、[项目金额]、[合同编号]、[签订日期]');
-      
-      setTimeout(() => {
-        isScanning.value = false;
-        ocrSuccess.value = true;
-        
-        // 自动提取信息回填
-        formProject.value.name = '智能大屏数据可视化系统';
-        formProject.value.code = 'HT-2026-088';
-        formProject.value.amount = 420000.00;
-        formProject.value.date = '2026-06-05';
-        formProject.value.client = '网信政务科技集团';
+      addLog('OCR扫描', `正在上传 Word 合同: ${file.name} (${(file.size / 1024).toFixed(1)}KB)...`);
+
+      try {
+        // 先创建项目草稿
+        const projRes = await fetch(`${API_BASE}/projects/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          body: JSON.stringify({
+            project_name: '待识别项目',
+            contract_no: null,
+            contract_amount: null,
+            customer_name: null,
+            project_type: null,
+            sign_date: null,
+            description: null,
+          }),
+        });
+
+        if (!projRes.ok) {
+          const err = await projRes.json().catch(() => ({}));
+          throw new Error(err.detail || err.message || '创建项目失败');
+        }
+
+        const projData = await projRes.json();
+        currentProjectId.value = projData.id;
+        addLog('数据库', `项目草稿已创建，ID: ${projData.id}`);
+
+        // 上传 Word 文件
+        const formData = new FormData();
+        formData.append('file', file);
+
+        addLog('OCR扫描', '正在解析 Word 合同文本... 抓取参数: [项目名称]、[项目金额]、[合同编号]、[签订日期]');
+
+        const uploadRes = await fetch(`${API_BASE}/projects/${projData.id}/upload-word`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: formData,
+        });
+
+        if (!uploadRes.ok) {
+          const err = await uploadRes.json().catch(() => ({}));
+          throw new Error(err.detail || err.message || '上传失败');
+        }
+
+        const uploadData = await uploadRes.json();
+        const extracted = uploadData.ocr_result?.extracted || {};
+
+        // 自动提取信息回填表单
+        formProject.value.name = extracted.project_name || '待识别项目';
+        formProject.value.code = extracted.contract_no || '';
+        formProject.value.amount = extracted.contract_amount ? parseFloat(extracted.contract_amount) : 0;
+        formProject.value.date = extracted.sign_date || '';
+        formProject.value.client = extracted.customer_name || '';
         formProject.value.type = '软件开发';
         formProject.value.pm = '王五';
-        formProject.value.description = '政务大屏可视化项目研发合作协议。';
+        formProject.value.description = '';
         formProject.value.expenses = [];
-        
-        addLog('OCR扫描', 'Word 原件文本扫描成功。置信度 100%。已自动映射至表单。');
+
+        // 更新项目名称（回填后同步到后端）
+        if (extracted.project_name) {
+          await fetch(`${API_BASE}/projects/${projData.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+            body: JSON.stringify({
+              project_name: extracted.project_name,
+              contract_no: extracted.contract_no || null,
+              contract_amount: extracted.contract_amount ? parseFloat(extracted.contract_amount) : null,
+              customer_name: extracted.customer_name || null,
+              sign_date: extracted.sign_date || null,
+            }),
+          }).catch(() => {});
+        }
+
+        isScanning.value = false;
+        ocrSuccess.value = true;
+
+        const fields = [];
+        if (extracted.project_name) fields.push('项目名称');
+        if (extracted.contract_amount) fields.push('合同金额');
+        if (extracted.contract_no) fields.push('合同编号');
+        if (extracted.sign_date) fields.push('签订日期');
+        if (extracted.customer_name) fields.push('客户名称');
+
+        addLog('OCR扫描', `Word 合同解析成功。识别到字段: [${fields.join('、') || '无'}]。已自动映射至表单。`);
         currentStep.value = 2;
-      }, 3000);
+
+      } catch (err) {
+        isScanning.value = false;
+        addLog('系统', `上传失败: ${err.message}`);
+        alert('Word 合同上传失败: ' + err.message);
+      }
     };
 
     const nextToSeal = () => {
@@ -413,9 +535,46 @@ createApp({
       addLog('系统', 'Word 合同基本信息已保存。请继续上传盖章的 PDF 扫描件进行印章与金额校验。');
     };
 
-    const mockUploadSealPDF = () => {
-      formProject.value.contractFile = '智能大屏数据可视化系统-合同-已盖章.pdf';
-      addLog('OCR扫描', '成功导入盖章版 PDF 合同扫描文件：' + formProject.value.contractFile);
+    // ── PDF 盖章件上传（真实调用后端 API） ──
+    const mockUploadSealPDF = async () => {
+      const file = await pickFile('.pdf');
+      if (!file) return;
+
+      if (!currentProjectId.value) {
+        alert('请先上传 Word 合同或保存项目草稿！');
+        return;
+      }
+
+      addLog('OCR扫描', `正在上传盖章 PDF: ${file.name} (${(file.size / 1024).toFixed(1)}KB)...`);
+
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const uploadRes = await fetch(`${API_BASE}/projects/${currentProjectId.value}/upload-pdf`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: formData,
+        });
+
+        if (!uploadRes.ok) {
+          const err = await uploadRes.json().catch(() => ({}));
+          throw new Error(err.detail || err.message || '上传失败');
+        }
+
+        const uploadData = await uploadRes.json();
+        formProject.value.contractFile = file.name;
+        formProject.value.contractVersion = uploadData.version || 1;
+
+        // 保存 OCR 结果用于后续校验
+        window._pdfOcrResult = uploadData.ocr_result;
+
+        addLog('OCR扫描', `PDF 盖章件上传成功 (版本 v${uploadData.version || 1})。OCR 识别完成，已归档锁定。`);
+
+      } catch (err) {
+        addLog('系统', `PDF 上传失败: ${err.message}`);
+        alert('PDF 合同上传失败: ' + err.message);
+      }
     };
 
     // 支出预算流水管理
@@ -438,19 +597,50 @@ createApp({
       return formProject.value.expenses.reduce((sum, item) => sum + item.amount, 0);
     });
 
-    const nextToVerify = () => {
+    const nextToVerify = async () => {
       if (!formProject.value.contractFile) {
         alert('请先上传盖章的 PDF 合同文件！');
         return;
       }
+      if (!currentProjectId.value) {
+        alert('项目未创建，请先上传 Word 合同！');
+        return;
+      }
+
       currentStep.value = 4;
       addLog('OCR比对', '正在执行双版本合同结构文本校验（Word 录入值对比 PDF 扫描解析结果）...');
+
+      // 调用后端校验接口
+      try {
+        const res = await fetch(`${API_BASE}/projects/${currentProjectId.value}/verify`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || err.message || '校验失败');
+        }
+
+        const data = await res.json();
+        verifyDiffs.value = data.diffs || [];
+
+        if (verifyDiffs.value.length === 0) {
+          addLog('OCR比对', '校验通过！OCR 识别结果与录入信息完全一致，无差异项。');
+        } else {
+          addLog('OCR比对', `检测到 ${verifyDiffs.value.length} 处差异，请人工确认。`);
+        }
+      } catch (err) {
+        addLog('OCR比对', `校验请求失败: ${err.message}。将使用本地数据展示。`);
+        verifyDiffs.value = [];
+      }
     };
 
     // 印章校验与差异比对确认
     const verifyAccept1 = ref(true);
     const verifyAccept2 = ref(true);
     const verifyRemark = ref('大写金额字符转换与日期书写差异属于格式原因，正本含义实际无出入，确认确认。');
+    const verifyDiffs = ref([]);
 
     const startEditProject = (proj) => {
       activeEditProject.value = proj;
@@ -518,30 +708,49 @@ createApp({
       activeTab.value = 'projects';
     };
 
-    const submitProjectRegistration = () => {
-      if (!verifyAccept1.value || !verifyAccept2.value) {
+    const submitProjectRegistration = async () => {
+      if (verifyDiffs.value.length > 0 && (!verifyAccept1.value || !verifyAccept2.value)) {
         alert('必须人工核对并勾选所有提取差异项后，方可提起立项！');
         return;
       }
-      
-      if (activeEditProject.value) {
-        // 编辑重新提交模式
-        const idx = projects.value.findIndex(p => p.id === activeEditProject.value.id);
-        if (idx !== -1) {
-          projects.value[idx] = {
-            ...projects.value[idx],
-            ...formProject.value,
-            status: '待审核',
-            rejectReason: '' // 清除被驳回的原委
-          };
-          saveProjects();
-          addLog('数据库', `项目“${formProject.value.name}”修改已保存并重新提起立项审核流程。`);
+
+      if (!currentProjectId.value) {
+        alert('项目未创建，请先完成合同上传流程！');
+        return;
+      }
+
+      try {
+        // 更新项目信息到后端
+        await fetch(`${API_BASE}/projects/${currentProjectId.value}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          body: JSON.stringify({
+            project_name: formProject.value.name,
+            contract_no: formProject.value.code || null,
+            contract_amount: formProject.value.amount || null,
+            customer_name: formProject.value.client || null,
+            sign_date: formProject.value.date || null,
+            description: formProject.value.description || null,
+          }),
+        }).catch(() => {});
+
+        // 提交立项申请
+        const res = await fetch(`${API_BASE}/projects/${currentProjectId.value}/submit`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || err.message || '提交失败');
         }
-      } else {
-        // 新增项目模式
+
+        addLog('数据库', `项目”${formProject.value.name}”立项已发起，提交审核流。当前等待管理员终审。`);
+
+        // 同步到本地列表
         const newProj = {
           ...formProject.value,
-          id: Date.now(),
+          id: currentProjectId.value,
           status: '待审核',
           created_by: currentUser.value.username,
           invoices: [],
@@ -549,11 +758,14 @@ createApp({
         };
         projects.value.push(newProj);
         saveProjects();
-        addLog('数据库', `项目“${newProj.name}”立项已发起，提交审核流。当前等待管理员终审。`);
+
+        resetForm();
+        activeTab.value = 'projects';
+
+      } catch (err) {
+        addLog('系统', `提交失败: ${err.message}`);
+        alert('提交立项失败: ' + err.message);
       }
-      
-      resetForm();
-      activeTab.value = 'projects';
     };
 
     const resetForm = () => {
@@ -578,10 +790,24 @@ createApp({
       };
       currentStep.value = 1;
       ocrSuccess.value = false;
-      activeEditProject.value = null; // 确保清空编辑态
+      activeEditProject.value = null;
+      currentProjectId.value = null;
       verifyAccept1.value = true;
       verifyAccept2.value = true;
+      verifyDiffs.value = [];
       verifyRemark.value = '大写金额字符转换与日期书写差异属于格式原因，正本含义实际无出入，确认确认。';
+    };
+
+    // 字段中文名映射
+    const fieldLabelCN = (field) => {
+      const map = {
+        project_name: '项目名称',
+        contract_amount: '合同金额',
+        contract_no: '合同编号',
+        sign_date: '签订日期',
+        customer_name: '客户名称',
+      };
+      return map[field] || field;
     };
 
     // ── 审批流程 ──
@@ -1134,6 +1360,7 @@ createApp({
 
     // 监听导航菜单切换动效
     watch(activeTab, (newTab) => {
+      localStorage.setItem('pm_active_tab', newTab);
       if (newTab === 'dashboard') {
         animateDashboard();
       } else {
@@ -1423,6 +1650,7 @@ createApp({
       enforceTabAccess,
 
       // OCR 解析与分步
+      currentProjectId,
       isScanning,
       ocrSuccess,
       currentStep,
@@ -1440,8 +1668,10 @@ createApp({
       verifyAccept1,
       verifyAccept2,
       verifyRemark,
+      verifyDiffs,
       submitProjectRegistration,
       saveAsDraft,
+      fieldLabelCN,
       resetForm,
 
       // 业务计算项

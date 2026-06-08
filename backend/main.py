@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db.mysql import init_db, close_db
-from app.api import auth, users, projects, invoices, payments, close, dashboard, dict_api, expenses, config_api, uploads
+from app.api import auth, users, projects, invoices, payments, close, dashboard, dict_api, expenses, config_api, uploads, ocr
 from app.middleware.exception_handler import register_exception_handlers
 
 
@@ -50,6 +50,7 @@ app.include_router(dict_api.router, prefix="/api/dict", tags=["数据字典"])
 app.include_router(expenses.router, prefix="/api/projects", tags=["支出管理"])
 app.include_router(config_api.router, prefix="/api/config", tags=["系统配置"])
 app.include_router(uploads.router, prefix="/api/uploads", tags=["文件管理"])
+app.include_router(ocr.router, prefix="/api/ocr", tags=["OCR 识别"])
 
 
 @app.get("/api/health", tags=["健康检查"])

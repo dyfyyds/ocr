@@ -23,6 +23,10 @@
           <el-icon><Folder /></el-icon>
           <span>项目档案</span>
         </el-menu-item>
+        <el-menu-item index="/ocr">
+          <el-icon><Search /></el-icon>
+          <span>OCR 识别</span>
+        </el-menu-item>
         <el-menu-item v-if="hasRole(['admin'])" index="/audit">
           <el-icon><Checked /></el-icon>
           <span>立项审核</span>

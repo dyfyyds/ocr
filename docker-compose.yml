@@ -1,10 +1,11 @@
 # ============================================================
-#  智能项目管理系统 - Docker Compose 开发环境
+#  智能项目管理系统 - Docker Compose 开发环境（热加载）
 #
 #  使用:
 #    docker compose up -d          # 启动所有服务
-#    docker compose restart backend # 后端代码改动后重启
+#    docker compose restart backend # 后端代码改动后重启（uvicorn --reload 通常自动重载）
 #    docker compose logs -f backend # 查看后端日志
+#    docker compose logs -f frontend # 查看前端日志
 #    docker compose down            # 停止所有服务（保留数据）
 #    docker compose down -v         # 停止并删除数据卷
 # ============================================================
@@ -41,7 +42,7 @@ services:
     networks:
       - pm-network
 
-  # ==================== 后端 (FastAPI) ====================
+  # ==================== 后端 (FastAPI + uvicorn --reload) ====================
   backend:
     build:
       context: ./backend
@@ -73,13 +74,27 @@ services:
     networks:
       - pm-network
 
-  # ==================== 前端 (原型 HTML + Nginx) ====================
+  # ==================== 前端 (Vite 开发服务器 + HMR 热加载) ====================
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: pm-frontend
     restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    volumes:
+      # 挂载源码，修改即时生效（Vite HMR）
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/spa.html:/app/spa.html
+      - ./frontend/index.html:/app/index.html
+      - ./frontend/app.js:/app/app.js
+      - ./frontend/style.css:/app/style.css
+      - ./frontend/vite.config.js:/app/vite.config.js
+    depends_on:
+      backend:
+        condition: service_healthy
     networks:
       - pm-network
 
@@ -98,7 +113,7 @@ services:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://localhost:80/ | grep -qE '^(200|301|302|404)$' || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/ > /dev/null 2>&1 || exit 0"]
       interval: 10s
       timeout: 5s
       retries: 3

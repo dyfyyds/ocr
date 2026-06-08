@@ -1,14 +1,18 @@
 # ============================================================
-#  前端 Dockerfile - Nginx 托管静态原型文件
+#  前端 Dockerfile - 开发模式 (Vite HMR 热加载)
 # ============================================================
-FROM nginx:alpine
+FROM node:20-alpine
 
-# 复制原型文件到 nginx 默认静态目录
-COPY index.html /usr/share/nginx/html/
-COPY app.js /usr/share/nginx/html/
-COPY style.css /usr/share/nginx/html/
-COPY space_bg.png /usr/share/nginx/html/
+WORKDIR /app
 
-EXPOSE 80
+# 先复制依赖文件，利用 Docker 缓存层
+COPY package.json package-lock.json* ./
+RUN npm install --registry=https://registry.npmmirror.com
 
-CMD ["nginx", "-g", "daemon off;"]
+# 源码通过 volume 挂载，此处仅复制用于首次构建
+COPY . .
+
+EXPOSE 5173
+
+# Vite 开发服务器，host 0.0.0.0 供容器外访问
+CMD ["npx", "vite", "--host", "0.0.0.0", "--port", "5173"]

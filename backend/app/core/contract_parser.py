@@ -16,8 +16,23 @@ def parse_word_contract(file_path: str) -> dict:
     import docx
 
     doc = docx.Document(file_path)
-    full_text = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
+    parts = []
+    # 提取段落文本
+    for p in doc.paragraphs:
+        if p.text.strip():
+            parts.append(p.text.strip())
+    # 提取表格文本（很多合同关键信息在表格里）
+    for table in doc.tables:
+        for row in table.rows:
+            cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+            if cells:
+                # 表格常见格式：key | value，加上冒号方便 NLP 匹配
+                if len(cells) == 2 and len(cells[0]) <= 15 and '：' not in cells[0] and ':' not in cells[0]:
+                    parts.append(f"{cells[0]}：{cells[1]}")
+                else:
+                    parts.append(' '.join(cells))
 
+    full_text = "\n".join(parts)
     extracted = extractor.extract(full_text)
 
     return {
