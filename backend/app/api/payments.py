@@ -1,7 +1,10 @@
 # ============================================================
 #  回款管理接口
 # ============================================================
-from fastapi import APIRouter, Depends
+from decimal import Decimal
+from datetime import date
+
+from fastapi import APIRouter, Depends, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -9,9 +12,12 @@ from app.db.mysql import get_db
 from app.models.project import Project
 from app.models.payment import Payment
 from app.models.invoice import Invoice
-from app.schemas.payments import PaymentCreate, PaymentOut
+from app.schemas.payments import PaymentOut
 from app.dependencies import get_current_user, require_role
 from app.models.user import User
+from app.utils.file_utils import (
+    validate_file_type, validate_file_size, generate_safe_filename, get_upload_path,
+)
 from app.exceptions import NotFoundError, ValidationError
 
 router = APIRouter()
@@ -35,11 +41,23 @@ async def list_payments(
 @router.post("/{project_id}/payments", response_model=PaymentOut)
 async def create_payment(
     project_id: int,
-    body: PaymentCreate,
+    amount: Decimal = Form(...),
+    payment_date: date = Form(...),
+    payment_method: str | None = Form(None),
+    invoice_id: int | None = Form(None),
+    remark: str | None = Form(None),
+    file: UploadFile = File(None),
     user: User = Depends(require_role("finance", "admin")),
     db: AsyncSession = Depends(get_db),
 ):
-    """回款登记。"""
+    """回款登记，可选上传回款凭证（图片/PDF）。
+
+    改为 multipart/form-data 以支持 PPT 要求的「回款上传凭证」，
+    凭证落地后写入 payments.file_path（该列模型已存在）。
+    """
+    if amount <= 0:
+        raise ValidationError("回款金额必须大于 0")
+
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
@@ -48,18 +66,30 @@ async def create_payment(
         raise ValidationError("只有已立项的项目可以登记回款")
 
     # 验证发票存在
-    if body.invoice_id:
-        inv = (await db.execute(select(Invoice).where(Invoice.id == body.invoice_id))).scalar_one_or_none()
+    if invoice_id:
+        inv = (await db.execute(select(Invoice).where(Invoice.id == invoice_id))).scalar_one_or_none()
         if not inv:
             raise NotFoundError("关联的发票不存在")
 
+    # 可选回款凭证落地
+    file_path = None
+    if file:
+        validate_file_type(file.filename, "all")
+        content = await file.read()
+        validate_file_size(len(content))
+        safe_name = generate_safe_filename(file.filename)
+        file_path = get_upload_path("payments", safe_name)
+        with open(file_path, "wb") as f:
+            f.write(content)
+
     payment = Payment(
         project_id=project_id,
-        invoice_id=body.invoice_id,
-        amount=body.amount,
-        payment_date=body.payment_date,
-        payment_method=body.payment_method,
-        remark=body.remark,
+        invoice_id=invoice_id,
+        amount=amount,
+        payment_date=payment_date,
+        payment_method=payment_method,
+        remark=remark,
+        file_path=file_path,
         created_by=user.id,
     )
     db.add(payment)

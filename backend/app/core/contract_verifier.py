@@ -6,17 +6,20 @@ from datetime import datetime
 
 
 class ContractVerifier:
-    """合同校验：逐字段模糊比对。"""
+    """合同校验：逐字段模糊比对（动态遍历 OCR 提取的所有字段）。"""
 
-    VERIFY_FIELDS = ["project_name", "contract_amount", "contract_no", "sign_date"]
+    # 字段名关键词 → 比对策略
+    _AMOUNT_KEYWORDS = ("amount", "金额", "价款", "费用", "造价")
+    _DATE_KEYWORDS = ("date", "日期", "时间")
 
     def verify(self, ocr_data: dict, input_data: dict) -> list[dict]:
         """
         比对 OCR 提取值与录入值，返回差异列表。
+        动态遍历 ocr_data 中的所有字段，不再硬编码字段列表。
         返回: [{"field_name": ..., "ocr_value": ..., "input_value": ..., "diff_type": ...}, ...]
         """
         diffs = []
-        for field in self.VERIFY_FIELDS:
+        for field in ocr_data:
             ocr_val = str(ocr_data.get(field, "") or "").strip()
             input_val = str(input_data.get(field, "") or "").strip()
 
@@ -34,14 +37,20 @@ class ContractVerifier:
 
         return diffs
 
+    def _is_amount_field(self, field: str) -> bool:
+        return any(kw in field.lower() for kw in self._AMOUNT_KEYWORDS)
+
+    def _is_date_field(self, field: str) -> bool:
+        return any(kw in field.lower() for kw in self._DATE_KEYWORDS)
+
     def _fuzzy_equal(self, a: str, b: str, field: str) -> bool:
-        """模糊比对。"""
+        """模糊比对：根据字段名自动推断比对策略。"""
         if not a or not b:
             return a == b
 
-        if field == "contract_amount":
+        if self._is_amount_field(field):
             return self._amount_equal(a, b)
-        elif field == "sign_date":
+        elif self._is_date_field(field):
             return self._date_equal(a, b)
         else:
             return self._text_equal(a, b)
@@ -85,7 +94,7 @@ class ContractVerifier:
             return "missing"
         if not input_val:
             return "missing"
-        if field == "contract_amount":
+        if self._is_amount_field(field):
             return "format"
         return "mismatch"
 

@@ -1,5 +1,5 @@
 # ============================================================
-#  合同解析器 - Word/PDF 文本提取 + NLP 实体提取
+#  合同解析器 - Word/PDF 文本提取 + 正则 + LLM 综合提取
 # ============================================================
 import logging
 
@@ -7,45 +7,99 @@ from app.core.nlp_extractor import extractor
 
 logger = logging.getLogger(__name__)
 
+# 合同关键字段列表
+CONTRACT_FIELDS = ("project_name", "contract_amount", "contract_no", "sign_date", "customer_name")
 
-def parse_word_contract(file_path: str) -> dict:
-    """
-    解析 Word 合同文件，提取文本并进行 NLP 实体提取。
-    返回: {"raw_text": "...", "extracted": {...}}
-    """
+
+def _extract_text_from_docx(file_path: str) -> str:
+    """从 Word 文件提取纯文本。"""
     import docx
 
     doc = docx.Document(file_path)
     parts = []
-    # 提取段落文本
     for p in doc.paragraphs:
         if p.text.strip():
             parts.append(p.text.strip())
-    # 提取表格文本（很多合同关键信息在表格里）
     for table in doc.tables:
         for row in table.rows:
             cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
             if cells:
-                # 表格常见格式：key | value，加上冒号方便 NLP 匹配
                 if len(cells) == 2 and len(cells[0]) <= 15 and '：' not in cells[0] and ':' not in cells[0]:
                     parts.append(f"{cells[0]}：{cells[1]}")
                 else:
                     parts.append(' '.join(cells))
+    return "\n".join(parts)
 
-    full_text = "\n".join(parts)
+
+def _merge_extracted(regex_result: dict, llm_result: dict) -> tuple[dict, dict]:
+    """
+    合并正则提取和 LLM 提取结果。
+    策略：LLM 优先，正则兜底。
+    返回: (merged, extracted_by)
+    """
+    merged = {}
+    source_map = {}
+    for field in CONTRACT_FIELDS:
+        llm_val = str(llm_result.get(field, "") or "").strip()
+        regex_val = str(regex_result.get(field, "") or "").strip()
+        if llm_val:
+            merged[field] = llm_val
+            source_map[field] = "llm"
+        elif regex_val:
+            merged[field] = regex_val
+            source_map[field] = "regex"
+        else:
+            merged[field] = ""
+            source_map[field] = ""
+    return merged, source_map
+
+
+def parse_word_contract(file_path: str) -> dict:
+    """
+    解析 Word 合同文件（同步，仅正则提取）。
+    返回: {"raw_text": "...", "extracted": {...}}
+    """
+    full_text = _extract_text_from_docx(file_path)
     extracted = extractor.extract(full_text)
 
     return {
-        "raw_text": full_text[:2000],  # 截断避免过大
+        "raw_text": full_text[:2000],
         "extracted": extracted,
+        "source": "python-docx",
+    }
+
+
+async def parse_word_contract_with_llm(file_path: str) -> dict:
+    """
+    解析 Word 合同文件（异步，正则 + LLM 综合提取）。
+    返回: {"raw_text": "...", "extracted": {...}, "extracted_by": {...}, "llm_extracted": {...}}
+    """
+    full_text = _extract_text_from_docx(file_path)
+    regex_result = extractor.extract(full_text)
+
+    # 尝试 LLM 提取
+    llm_result = {}
+    try:
+        from app.core.llm_extractor import llm_extractor
+        llm_result = await llm_extractor.extract(full_text)
+    except Exception as e:
+        logger.warning(f"LLM 提取失败，降级为纯正则: {e}")
+
+    merged, source_map = _merge_extracted(regex_result, llm_result)
+
+    return {
+        "raw_text": full_text[:2000],
+        "extracted": merged,
+        "extracted_by": source_map,
+        "regex_extracted": regex_result,
+        "llm_extracted": llm_result,
         "source": "python-docx",
     }
 
 
 def parse_pdf_contract(file_path: str) -> dict:
     """
-    解析 PDF 合同文件。
-    优先用 pdfplumber 提取文本，扫描件则调用 OCR。
+    解析 PDF 合同文件（同步，仅正则提取）。
     返回: {"raw_text": "...", "extracted": {...}, "ocr_items": [...]}
     """
     from app.core.ocr_engine import ocr_from_pdf_bytes
@@ -54,15 +108,47 @@ def parse_pdf_contract(file_path: str) -> dict:
         pdf_bytes = f.read()
 
     ocr_items = ocr_from_pdf_bytes(pdf_bytes)
-
-    # 拼接所有识别文本
     full_text = "\n".join([item["text"] for item in ocr_items])
-
     extracted = extractor.extract(full_text)
 
     return {
         "raw_text": full_text[:2000],
         "extracted": extracted,
+        "ocr_items": ocr_items,
+        "source": "paddleocr",
+    }
+
+
+async def parse_pdf_contract_with_llm(file_path: str) -> dict:
+    """
+    解析 PDF 合同文件（异步，正则 + LLM 综合提取）。
+    返回: {"raw_text": "...", "extracted": {...}, "extracted_by": {...}, "llm_extracted": {...}, "ocr_items": [...]}
+    """
+    from app.core.ocr_engine import ocr_from_pdf_bytes
+
+    with open(file_path, "rb") as f:
+        pdf_bytes = f.read()
+
+    ocr_items = ocr_from_pdf_bytes(pdf_bytes)
+    full_text = "\n".join([item["text"] for item in ocr_items])
+    regex_result = extractor.extract(full_text)
+
+    # 尝试 LLM 提取
+    llm_result = {}
+    try:
+        from app.core.llm_extractor import llm_extractor
+        llm_result = await llm_extractor.extract(full_text)
+    except Exception as e:
+        logger.warning(f"LLM 提取失败，降级为纯正则: {e}")
+
+    merged, source_map = _merge_extracted(regex_result, llm_result)
+
+    return {
+        "raw_text": full_text[:2000],
+        "extracted": merged,
+        "extracted_by": source_map,
+        "regex_extracted": regex_result,
+        "llm_extracted": llm_result,
         "ocr_items": ocr_items,
         "source": "paddleocr",
     }

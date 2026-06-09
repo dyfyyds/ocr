@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     # OCR
     OCR_ENGINE: str = "paddleocr"
 
+    # LLM（大模型接口，OpenAI 兼容）
+    LLM_API_URL: str = "https://token-plan-cn.xiaomimimo.com/v1/chat/completions"
+    LLM_API_KEY: str = ""
+    LLM_MODEL: str = "mimo-v2.5-pro"
+
     # 文件上传
     MAX_FILE_SIZE_MB: int = 20
     UPLOAD_DIR: str = "/app/uploads"

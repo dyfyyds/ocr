@@ -11,19 +11,20 @@ class NlpExtractor:
     """从 OCR 文本中提取结构化字段。"""
 
     # 金额模式：支持多种常见合同写法
+    # group(1) = 数字部分，group(2) = "万"（如有）
     AMOUNT_PATTERNS = [
-        r"[¥￥]\s*([\d,]+\.?\d*)",
-        r"人民币\s*([\d,]+\.?\d*)\s*万?元?",
-        r"合同金额[：:]\s*([\d,]+\.?\d*)",
-        r"合同总[金价][额格][：:]\s*([\d,]+\.?\d*)",
-        r"总[金价]额[：:]\s*([\d,]+\.?\d*)",
-        r"项目金额[：:]\s*([\d,]+\.?\d*)",
-        r"价款[：:]\s*([\d,]+\.?\d*)",
-        r"工程造价[：:]\s*([\d,]+\.?\d*)",
-        r"服务费[：:]\s*([\d,]+\.?\d*)",
-        r"成交金额[：:]\s*([\d,]+\.?\d*)",
-        r"中标价[：:]\s*([\d,]+\.?\d*)",
-        r"([\d,]+\.?\d*)\s*元",
+        r"[¥￥]\s*([\d,]+\.?\d*)(万?)",
+        r"人民币\s*([\d,]+\.?\d*)(万元?)?",
+        r"合同金额[：:]\s*([\d,]+\.?\d*)(万元?)?",
+        r"合同总[金价][额格][：:]\s*([\d,]+\.?\d*)(万元?)?",
+        r"总[金价]额[：:]\s*([\d,]+\.?\d*)(万元?)?",
+        r"项目金额[：:]\s*([\d,]+\.?\d*)(万元?)?",
+        r"价款[：:]\s*([\d,]+\.?\d*)(万元?)?",
+        r"工程造价[：:]\s*([\d,]+\.?\d*)(万元?)?",
+        r"服务费[：:]\s*([\d,]+\.?\d*)(万元?)?",
+        r"成交金额[：:]\s*([\d,]+\.?\d*)(万元?)?",
+        r"中标价[：:]\s*([\d,]+\.?\d*)(万元?)?",
+        r"([\d,]+\.?\d*)(万元?)",
     ]
 
     # 合同编号模式
@@ -103,13 +104,15 @@ class NlpExtractor:
                 amount_str = match.group(1).replace(",", "").replace("，", "")
                 try:
                     amount = float(amount_str)
-                    # 检查匹配附近是否有"万"单位
-                    context = text[max(0, match.start() - 5):match.end() + 10]
-                    if "万" in context:
-                        amount *= 10000
-                    return f"{amount:.2f}"
                 except ValueError:
                     continue
+
+                # "万"单位：由正则 group(2) 直接捕获，无需上下文猜测
+                unit = match.group(2) if match.lastindex and match.lastindex >= 2 else ""
+                if "万" in unit:
+                    amount *= 10000
+
+                return f"{amount:.2f}"
         return ""
 
     def _extract_contract_no(self, text: str) -> str:

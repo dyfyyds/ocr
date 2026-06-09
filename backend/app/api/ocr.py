@@ -1,15 +1,24 @@
 # ============================================================
-#  独立 OCR 识别接口 - 不绑定项目，直接上传文件识别
+#  独立 OCR 识别接口 - 不绑定项目，正则 + LLM 综合提取
 # ============================================================
+import logging
+import tempfile
+import os
+
 from fastapi import APIRouter, Depends, UploadFile, File
 
 from app.dependencies import get_current_user
 from app.models.user import User
 from app.utils.file_utils import validate_file_type, validate_file_size
-from app.core.contract_parser import parse_word_contract, parse_pdf_contract
+from app.core.contract_parser import (
+    parse_word_contract_with_llm, parse_pdf_contract_with_llm,
+    _merge_extracted, CONTRACT_FIELDS,
+)
 from app.core.ocr_engine import ocr_from_image_bytes
 from app.core.nlp_extractor import extractor
 from app.exceptions import ValidationError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -23,52 +32,58 @@ async def recognize_file(
     user: User = Depends(get_current_user),
 ):
     """
-    独立 OCR 识别：上传文件（Word/PDF/图片），返回识别结果。
+    独立 OCR 识别：上传文件（Word/PDF/图片），正则 + LLM 综合提取。
     不写入数据库，不绑定项目。
     """
-    # 校验文件类型（允许所有支持的类型）
     ext = validate_file_type(file.filename, "all")
     content = await file.read()
     validate_file_size(len(content))
 
     try:
         if ext == ".docx":
-            # Word 文件：保存临时文件后用 python-docx 解析
-            import tempfile, os
             with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
                 tmp.write(content)
                 tmp_path = tmp.name
             try:
-                result = parse_word_contract(tmp_path)
+                result = await parse_word_contract_with_llm(tmp_path)
             finally:
                 os.unlink(tmp_path)
 
         elif ext == ".pdf":
-            # PDF 文件：保存临时文件后用 pdfplumber + PaddleOCR 解析
-            import tempfile, os
             with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
                 tmp.write(content)
                 tmp_path = tmp.name
             try:
-                result = parse_pdf_contract(tmp_path)
+                result = await parse_pdf_contract_with_llm(tmp_path)
             finally:
                 os.unlink(tmp_path)
 
         elif ext in IMAGE_EXTENSIONS:
-            # 图片文件：直接用 PaddleOCR 识别
             ocr_items = ocr_from_image_bytes(content)
             full_text = "\n".join([item["text"] for item in ocr_items])
 
-            # 同时尝试合同字段提取和发票字段提取
+            # 正则提取（合同 + 发票）
             contract_extracted = extractor.extract(full_text)
             invoice_extracted = _extract_invoice_fields(full_text)
 
-            # 合并提取结果（合同字段优先，发票字段补充）
-            merged = {**invoice_extracted, **contract_extracted}
+            # LLM 提取
+            llm_result = {}
+            try:
+                from app.core.llm_extractor import llm_extractor
+                llm_result = await llm_extractor.extract(full_text)
+            except Exception as e:
+                logger.warning(f"图片 LLM 提取失败: {e}")
+
+            # 合并：LLM 优先，正则兜底
+            merged_regex = {**invoice_extracted, **contract_extracted}
+            merged, source_map = _merge_extracted(merged_regex, llm_result)
 
             result = {
                 "raw_text": full_text[:2000],
                 "extracted": merged,
+                "extracted_by": source_map,
+                "regex_extracted": merged_regex,
+                "llm_extracted": llm_result,
                 "ocr_items": ocr_items,
                 "source": "paddleocr",
             }

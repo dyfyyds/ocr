@@ -12,6 +12,6 @@ export function recognizeFile(file) {
   const formData = new FormData()
   formData.append('file', file)
   return request.post('/ocr/recognize', formData, {
-    timeout: 120000, // OCR 可能耗时较长，超时设为 120 秒
+    timeout: 180000, // OCR + LLM 提取可能耗时较长，超时设为 180 秒
   })
 }

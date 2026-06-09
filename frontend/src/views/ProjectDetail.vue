@@ -76,30 +76,12 @@
           </template>
 
           <el-descriptions :column="2" border style="margin-bottom: 16px">
-            <el-descriptions-item label="项目名称">
-              <span :class="{ 'highlight-empty': !ocrResult.extracted?.project_name }">
-                {{ ocrResult.extracted?.project_name || '未识别到' }}
+            <el-descriptions-item v-for="field in ocrFields" :key="field.key" :label="field.label">
+              <span :class="{ 'highlight-empty': !ocrResult.extracted?.[field.key] }">
+                {{ formatOcrField(field.key, ocrResult.extracted?.[field.key]) }}
               </span>
-            </el-descriptions-item>
-            <el-descriptions-item label="合同编号">
-              <span :class="{ 'highlight-empty': !ocrResult.extracted?.contract_no }">
-                {{ ocrResult.extracted?.contract_no || '未识别到' }}
-              </span>
-            </el-descriptions-item>
-            <el-descriptions-item label="合同金额">
-              <span :class="{ 'highlight-empty': !ocrResult.extracted?.contract_amount }">
-                {{ ocrResult.extracted?.contract_amount ? '¥' + Number(ocrResult.extracted.contract_amount).toLocaleString() : '未识别到' }}
-              </span>
-            </el-descriptions-item>
-            <el-descriptions-item label="签订日期">
-              <span :class="{ 'highlight-empty': !ocrResult.extracted?.sign_date }">
-                {{ ocrResult.extracted?.sign_date || '未识别到' }}
-              </span>
-            </el-descriptions-item>
-            <el-descriptions-item label="客户名称" :span="2">
-              <span :class="{ 'highlight-empty': !ocrResult.extracted?.customer_name }">
-                {{ ocrResult.extracted?.customer_name || '未识别到' }}
-              </span>
+              <el-tag v-if="ocrResult.extracted_by?.[field.key] === 'llm'" size="small" type="success" style="margin-left: 6px">🤖 LLM</el-tag>
+              <el-tag v-else-if="ocrResult.extracted_by?.[field.key] === 'regex'" size="small" type="info" style="margin-left: 6px">📝 正则</el-tag>
             </el-descriptions-item>
           </el-descriptions>
 
@@ -173,6 +155,89 @@
           </div>
         </el-card>
 
+        <!-- 合同版本列表 -->
+        <el-card v-if="contracts.length > 0" shadow="never" style="margin-bottom: 16px">
+          <template #header><span style="font-weight: 600">合同文件版本（{{ contracts.length }}）</span></template>
+          <el-table :data="contracts" stripe border size="small">
+            <el-table-column prop="version" label="版本" width="70">
+              <template #default="{ row }">v{{ row.version || 1 }}</template>
+            </el-table-column>
+            <el-table-column prop="file_type" label="类型" width="70">
+              <template #default="{ row }">
+                <el-tag :type="row.file_type === 'pdf' ? 'warning' : 'success'" size="small">
+                  {{ row.file_type?.toUpperCase() }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="file_name" label="文件名" show-overflow-tooltip />
+            <el-table-column label="识别引擎" width="100">
+              <template #default="{ row }">
+                <el-tag v-if="row.source === 'paddleocr'" type="warning" size="small">PaddleOCR</el-tag>
+                <el-tag v-else-if="row.source === 'python-docx'" type="success" size="small">Docx</el-tag>
+                <span v-else style="color:#999">-</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="项目名称" show-overflow-tooltip>
+              <template #default="{ row }">
+                <span :class="{ 'highlight-empty': !row.extracted?.project_name }">{{ row.extracted?.project_name || '未识别' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="合同金额" width="120">
+              <template #default="{ row }">
+                <span :class="{ 'highlight-empty': !row.extracted?.contract_amount }">
+                  {{ row.extracted?.contract_amount ? '¥' + Number(row.extracted.contract_amount).toLocaleString() : '未识别' }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="80">
+              <template #default="{ row }">
+                <el-button v-if="row.raw_text" type="primary" link size="small" @click="showRawText(row)">查看原文</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+
+        <!-- 多版本 OCR 对比（仅 2+ PDF 版本时显示） -->
+        <el-card v-if="pdfVersions.length >= 2" shadow="never" style="margin-bottom: 16px">
+          <template #header>
+            <div style="display: flex; justify-content: space-between; align-items: center">
+              <span style="font-weight: 600">多版本 OCR 字段对比（{{ pdfVersions.length }} 个版本）</span>
+              <el-button type="primary" size="small" :loading="analyzing" @click="handleAnalyzeVersions">
+                🤖 LLM 智能分析
+              </el-button>
+            </div>
+          </template>
+
+          <!-- 版本对比表 -->
+          <el-table :data="versionDiffs" stripe border size="small" :row-class-name="row => row.hasDiff ? 'diff-row' : ''">
+            <el-table-column prop="field.label" label="字段" width="120" />
+            <el-table-column v-for="(v, i) in pdfVersions" :key="v.id" :label="'v' + (v.version || (i+1)) + ' ' + (v.file_name || '')" min-width="160">
+              <template #default="{ row }">
+                <span :style="{ color: row.hasDiff ? '#e6a23c' : '#333', fontWeight: row.hasDiff ? '600' : '400' }">
+                  {{ formatOcrField(row.field.key, row.values[i]) || '未识别' }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="80" align="center">
+              <template #default="{ row }">
+                <el-tag v-if="row.hasDiff" type="warning" size="small">有差异</el-tag>
+                <el-tag v-else type="success" size="small">一致</el-tag>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <!-- LLM 分析结果 -->
+          <div v-if="versionAnalysis" style="margin-top: 16px">
+            <div style="font-weight: 600; margin-bottom: 8px">🤖 AI 分析报告</div>
+            <pre class="analysis-text">{{ versionAnalysis }}</pre>
+          </div>
+        </el-card>
+
+        <!-- 原文弹窗 -->
+        <el-dialog v-model="rawTextVisible" :title="'查看原文 - ' + (rawTextContract?.file_name || '')" width="700px">
+          <pre class="raw-text" style="max-height: 500px">{{ rawTextContract?.raw_text }}</pre>
+        </el-dialog>
+
         <!-- 操作按钮（仅商务/管理员可提交立项，避免项目经理点击后被后端拒绝） -->
         <el-card v-if="project.status === 'draft' && canSubmit" shadow="never">
           <div style="display: flex; justify-content: flex-end; gap: 12px">
@@ -195,6 +260,8 @@ import {
   uploadWordContract,
   uploadPdfContract,
   verifyContract,
+  analyzeVersions,
+  getContracts,
   submitProject,
 } from '../api/projects'
 import { ElMessage } from 'element-plus'
@@ -227,8 +294,35 @@ const ocrResult = ref(null)
 const verifying = ref(false)
 const verifyResult = ref(null)
 
+// 合同版本列表 + 多版本分析
+const contracts = ref([])
+const analyzing = ref(false)
+const versionAnalysis = ref(null)
+
+// PDF 版本列表（从 contracts 中筛选）
+const pdfVersions = computed(() => contracts.value.filter(c => c.file_type === 'pdf'))
+
+// 多版本对比数据：每个字段在各版本中的值
+const versionDiffs = computed(() => {
+  const versions = pdfVersions.value
+  if (versions.length < 2) return []
+  return ocrFields.map(f => {
+    const values = versions.map(v => v.extracted?.[f.key] || '')
+    const allSame = values.every(v => v === values[0])
+    return { field: f, values, hasDiff: !allSame }
+  })
+})
+
 // 提交
 const submitting = ref(false)
+
+// 原文弹窗
+const rawTextVisible = ref(false)
+const rawTextContract = ref(null)
+function showRawText(contract) {
+  rawTextContract.value = contract
+  rawTextVisible.value = true
+}
 
 const rowHasPage = computed(() => {
   return ocrResult.value?.ocr_items?.some(item => item.page)
@@ -244,10 +338,23 @@ const typeMap = {
   software: '软件开发', integration: '系统集成', consulting: '技术咨询', maintenance: '运维服务',
 }
 const fieldMap = {
-  project_name: '项目名称', contract_amount: '合同金额', contract_no: '合同编号', sign_date: '签订日期',
+  project_name: '项目名称', contract_amount: '合同金额', contract_no: '合同编号',
+  sign_date: '签订日期', customer_name: '客户名称',
 }
 const diffTypeMap = {
   missing: '缺失', mismatch: '不一致', format: '格式差异',
+}
+const ocrFields = [
+  { key: 'project_name', label: '项目名称' },
+  { key: 'contract_no', label: '合同编号' },
+  { key: 'contract_amount', label: '合同金额' },
+  { key: 'sign_date', label: '签订日期' },
+  { key: 'customer_name', label: '客户名称' },
+]
+function formatOcrField(key, val) {
+  if (!val) return '未识别到'
+  if (key === 'contract_amount') return '¥' + Number(val).toLocaleString()
+  return val
 }
 
 function statusLabel(s) { return statusMap[s] || s }
@@ -261,7 +368,7 @@ const canSubmit = computed(() =>
   ['admin', 'business'].includes(userStore.userInfo?.role)
 )
 
-// 加载项目信息（错误提示由 axios 拦截器统一处理，这里只负责兜底跳转）
+// 加载项目信息
 async function loadProject() {
   pageLoading.value = true
   try {
@@ -274,7 +381,17 @@ async function loadProject() {
   }
 }
 
-// 选择 Word 文件后自动上传解析（失败原因由拦截器统一弹出）
+// 加载合同版本列表
+async function loadContracts() {
+  try {
+    const res = await getContracts(projectId)
+    contracts.value = res.contracts || []
+  } catch (e) {
+    // 静默失败
+  }
+}
+
+// 选择 Word 文件后自动上传解析
 async function onWordFileSelected(e) {
   const file = e.target.files[0]
   if (!file) return
@@ -286,6 +403,7 @@ async function onWordFileSelected(e) {
       Object.assign(project, res.project)
     }
     ElMessage.success('Word 合同解析完成，已自动提取并回填项目信息')
+    loadContracts()
   } finally {
     wordUploading.value = false
     e.target.value = ''
@@ -301,6 +419,7 @@ async function onPdfFileSelected(e) {
     const res = await uploadPdfContract(projectId, file)
     ocrResult.value = res.ocr_result
     ElMessage.success(`PDF 合同 OCR 识别完成（版本 v${res.version}）`)
+    loadContracts()
   } finally {
     pdfUploading.value = false
     e.target.value = ''
@@ -323,6 +442,18 @@ async function handleVerify() {
   }
 }
 
+// 多版本 LLM 分析
+async function handleAnalyzeVersions() {
+  analyzing.value = true
+  try {
+    const res = await analyzeVersions(projectId)
+    versionAnalysis.value = res.analysis
+    ElMessage.success('版本分析完成')
+  } finally {
+    analyzing.value = false
+  }
+}
+
 // 提交立项
 async function handleSubmitProject() {
   submitting.value = true
@@ -335,7 +466,10 @@ async function handleSubmitProject() {
   }
 }
 
-onMounted(loadProject)
+onMounted(() => {
+  loadProject()
+  loadContracts()
+})
 </script>
 
 <style scoped>
@@ -364,5 +498,21 @@ onMounted(loadProject)
 .highlight-empty {
   color: #f56c6c;
   font-style: italic;
+}
+.analysis-text {
+  background: #f0f9ff;
+  padding: 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border-left: 4px solid #409eff;
+}
+:deep(.diff-row) {
+  background-color: #fdf6ec !important;
+}
+:deep(.diff-row:hover td) {
+  background-color: #faecd8 !important;
 }
 </style>

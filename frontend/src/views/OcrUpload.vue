@@ -52,35 +52,12 @@
 
           <!-- 提取的结构化字段 -->
           <el-descriptions :column="2" border style="margin-bottom: 16px">
-            <el-descriptions-item label="项目名称">
-              <span :class="{ 'highlight-empty': !ocrResult.extracted?.project_name }">
-                {{ ocrResult.extracted?.project_name || '未识别到' }}
+            <el-descriptions-item v-for="field in ocrFields" :key="field.key" :label="field.label">
+              <span :class="{ 'highlight-empty': !ocrResult.extracted?.[field.key] }">
+                {{ formatOcrField(field.key, ocrResult.extracted?.[field.key]) }}
               </span>
-            </el-descriptions-item>
-            <el-descriptions-item label="合同编号">
-              <span :class="{ 'highlight-empty': !ocrResult.extracted?.contract_no }">
-                {{ ocrResult.extracted?.contract_no || '未识别到' }}
-              </span>
-            </el-descriptions-item>
-            <el-descriptions-item label="合同金额">
-              <span :class="{ 'highlight-empty': !ocrResult.extracted?.contract_amount }">
-                {{ ocrResult.extracted?.contract_amount ? '¥' + Number(ocrResult.extracted.contract_amount).toLocaleString() : '未识别到' }}
-              </span>
-            </el-descriptions-item>
-            <el-descriptions-item label="签订日期">
-              <span :class="{ 'highlight-empty': !ocrResult.extracted?.sign_date }">
-                {{ ocrResult.extracted?.sign_date || '未识别到' }}
-              </span>
-            </el-descriptions-item>
-            <el-descriptions-item label="客户名称">
-              <span :class="{ 'highlight-empty': !ocrResult.extracted?.customer_name }">
-                {{ ocrResult.extracted?.customer_name || '未识别到' }}
-              </span>
-            </el-descriptions-item>
-            <el-descriptions-item label="发票号码">
-              <span :class="{ 'highlight-empty': !ocrResult.extracted?.invoice_no }">
-                {{ ocrResult.extracted?.invoice_no || '未识别到' }}
-              </span>
+              <el-tag v-if="ocrResult.extracted_by?.[field.key] === 'llm'" size="small" type="success" style="margin-left: 6px">🤖 LLM</el-tag>
+              <el-tag v-else-if="ocrResult.extracted_by?.[field.key] === 'regex'" size="small" type="info" style="margin-left: 6px">📝 正则</el-tag>
             </el-descriptions-item>
           </el-descriptions>
 
@@ -157,6 +134,20 @@ const ocrResult = ref(null)
 const rowHasPage = computed(() => {
   return ocrResult.value?.ocr_items?.some(item => item.page)
 })
+
+const ocrFields = [
+  { key: 'project_name', label: '项目名称' },
+  { key: 'contract_no', label: '合同编号' },
+  { key: 'contract_amount', label: '合同金额' },
+  { key: 'sign_date', label: '签订日期' },
+  { key: 'customer_name', label: '客户名称' },
+  { key: 'invoice_no', label: '发票号码' },
+]
+function formatOcrField(key, val) {
+  if (!val) return '未识别到'
+  if (key === 'contract_amount') return '¥' + Number(val).toLocaleString()
+  return val
+}
 
 // 选择文件后自动识别
 async function onFileSelected(e) {
