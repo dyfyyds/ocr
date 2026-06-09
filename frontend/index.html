@@ -1023,11 +1023,8 @@
 
               <!-- OCR 报告备注 -->
               <div class="border border-slate-850 p-4 rounded-xl space-y-2 bg-slate-950/50">
-                <h5 class="text-xs font-bold text-slate-300">系统 PaddleOCR 双本差异核准记录</h5>
-                <p class="text-[11px] text-slate-500">登记发起人已确认勾选并核准了全部合同金额及日期格式差异，并提交以下说明：</p>
-                <div class="p-3.5 rounded bg-slate-900/30 font-mono text-[11px] text-cyan-400">
-                  "金额与签订日期提取差异，判定为字符编码和书写格式问题，数据实际吻合，确认通过。"
-                </div>
+                <h5 class="text-xs font-bold text-slate-300">登记人提交的项目说明与差异核对备注</h5>
+                <div class="p-3.5 rounded bg-slate-900/30 font-mono text-[11px] text-cyan-400 whitespace-pre-line">{{ reviewProject.description || '登记人未填写附加说明。' }}</div>
               </div>
 
               <!-- 驳回意见输入 -->

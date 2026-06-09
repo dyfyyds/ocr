@@ -1012,7 +1012,9 @@ createApp({
       }
 
       try {
-        // 更新项目信息到后端
+        // 更新项目信息到后端（把差异核对说明并入描述，供审核人真实查看）
+        const remarkLine = verifyRemark.value ? ('差异核对说明：' + verifyRemark.value) : '';
+        const mergedDesc = [formProject.value.description, remarkLine].filter(Boolean).join('\n') || null;
         await api(`/projects/${currentProjectId.value}`, {
           method: 'PUT',
           body: {
@@ -1021,7 +1023,7 @@ createApp({
             contract_amount: formProject.value.amount || null,
             customer_name: formProject.value.client || null,
             sign_date: formProject.value.date || null,
-            description: formProject.value.description || null,
+            description: mergedDesc,
           },
         }).catch(() => {});
 

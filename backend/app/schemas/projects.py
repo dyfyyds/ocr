@@ -78,6 +78,13 @@ class ProjectOut(BaseModel):
     status: str
     created_by: int
     created_at: datetime
+    description: str | None = None         # 项目说明 + 差异核对备注，供审核人真实查看
+    audit_reason: str | None = None       # 立项审核意见（驳回原因），供商务查看
+    # 列表接口附加字段（其它接口默认为 None）：
+    created_by_name: str | None = None    # 创建人姓名/用户名，用于前端「申请人/创建人」展示
+    close_status: str | None = None       # 结项申请状态：None / pending / approved / rejected
+    acceptance_report: str | None = None  # 验收报告文件路径（非空表示已上传）
+    close_date: date | None = None        # 结项日期
 
     class Config:
         from_attributes = True
