@@ -37,7 +37,7 @@ createApp({
       date: '',
       client: '',
       type: '软件开发',
-      pm: '王五',
+      pm: '—',
       description: '',
       expenses: [],
       invoices: [],
@@ -725,7 +725,7 @@ createApp({
         formProject.value.date = extracted.sign_date || '';
         formProject.value.client = extracted.customer_name || '';
         formProject.value.type = '软件开发';
-        formProject.value.pm = '王五';
+        formProject.value.pm = '—';
         formProject.value.description = '';
         formProject.value.expenses = [];
 
@@ -1050,7 +1050,7 @@ createApp({
         date: '',
         client: '',
         type: '软件开发',
-        pm: '王五',
+        pm: '—',
         description: '',
         expenses: [],
         invoices: [],
@@ -1289,8 +1289,24 @@ createApp({
 
     // ── 财务查询汇总 + 报表导出（PPT slide 35） ──
     const queryYear = ref(new Date().getFullYear());
+    const queryMonth = ref(0); // 0 = 全年，1-12 = 指定月度
+    // 稳定的年度候选（以当前自然年为基准，避免选项随 queryYear 漂移）
+    const yearOptions = computed(() => {
+      const cy = new Date().getFullYear();
+      return [cy, cy - 1, cy - 2, cy - 3];
+    });
     let financeBarChart = null;
     let financePieChart = null;
+
+    // 按所选年度/月度过滤的开票或回款金额合计（依据每条明细的真实日期）
+    const sumInPeriod = (arr) => (arr || []).reduce((s, x) => {
+      if (!x.date) return s;
+      const d = new Date(x.date);
+      if (isNaN(d.getTime())) return s;
+      if (d.getFullYear() !== Number(queryYear.value)) return s;
+      if (queryMonth.value && (d.getMonth() + 1) !== Number(queryMonth.value)) return s;
+      return s + parseFloat(x.amount || 0);
+    }, 0);
 
     // 回款方式选项（取自数据字典 PAYMENT_METHOD，缺省给常用项）
     const paymentMethods = computed(() => {
@@ -1300,13 +1316,13 @@ createApp({
       return fromDict.length ? fromDict : ['银行转账', '支付宝商户', '现金', '支票'];
     });
 
-    // 已立项/已结项项目的开票回款汇总行
+    // 已立项/已结项项目在所选年度/月度内的开票回款汇总行
     const financeRows = computed(() => {
       return projects.value
         .filter(p => ['已立项', '已结项'].includes(p.status))
         .map(p => {
-          const invoiced = totalInvoiced(p);
-          const paid = totalPaid(p);
+          const invoiced = sumInPeriod(p.invoices);
+          const paid = sumInPeriod(p.payments);
           return {
             code: p.code, name: p.name, amount: p.amount,
             invoiced, paid, receivable: Math.max(0, invoiced - paid),
@@ -2242,6 +2258,8 @@ createApp({
 
       // 财务查询汇总 + 导出
       queryYear,
+      queryMonth,
+      yearOptions,
       paymentMethods,
       financeRows,
       financeTotals,

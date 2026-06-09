@@ -529,14 +529,7 @@
                 <div class="flex flex-col gap-2">
                   <label class="text-xs font-bold text-slate-400">项目类别 <span class="text-rose-500">*</span></label>
                   <select v-model="formProject.type" class="input-cyber bg-slate-900">
-                    <option v-for="item in dictItems.filter(d => d.typeCode === 'PROJECT_TYPE')" :value="item.name">{{ item.name }}</option>
-                  </select>
-                </div>
-                <div class="flex flex-col gap-2">
-                  <label class="text-xs font-bold text-slate-400">指派项目经理 <span class="text-rose-500">*</span></label>
-                  <select v-model="formProject.pm" class="input-cyber bg-slate-900">
-                    <option value="王五">王五（项目经理）</option>
-                    <option value="李四">李四（研发总监）</option>
+                    <option v-for="item in dictItems.filter(d => d.typeCode === 'project_type')" :value="item.name">{{ item.name }}</option>
                   </select>
                 </div>
               </div>
@@ -780,7 +773,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="proj in projects.filter(p => p.pm === currentUser.name || currentUser.name === '王五（项目经理）')">
+                  <tr v-for="proj in projects.filter(p => ['已立项','已结项'].includes(p.status))">
                     <td class="font-mono text-cyan-400">{{ proj.code }}</td>
                     <td>
                       <div class="font-bold text-slate-100">{{ proj.name }}</div>
@@ -1115,8 +1108,13 @@
                 <h3 class="font-bold text-base text-slate-200">开票回款查询汇总</h3>
                 <div class="flex items-center gap-2 text-xs">
                   <label class="text-slate-500">统计年度</label>
-                  <select v-model="queryYear" class="input-cyber py-1.5 text-xs bg-slate-900">
-                    <option v-for="y in [queryYear, queryYear - 1, queryYear - 2]" :key="y" :value="y">{{ y }} 年</option>
+                  <select v-model.number="queryYear" @change="nextTick(() => renderFinanceCharts())" class="input-cyber py-1.5 text-xs bg-slate-900">
+                    <option v-for="y in yearOptions" :key="y" :value="y">{{ y }} 年</option>
+                  </select>
+                  <label class="text-slate-500 ml-1">月度</label>
+                  <select v-model.number="queryMonth" @change="nextTick(() => renderFinanceCharts())" class="input-cyber py-1.5 text-xs bg-slate-900">
+                    <option :value="0">全年</option>
+                    <option v-for="m in 12" :key="m" :value="m">{{ m }} 月</option>
                   </select>
                 </div>
               </div>
