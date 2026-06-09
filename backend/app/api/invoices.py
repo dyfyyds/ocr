@@ -40,12 +40,16 @@ async def list_invoices(
 async def create_invoice(
     project_id: int,
     amount: Decimal = Form(...),
+    tax_rate: Decimal = Form(None),
+    tax_amount: Decimal = Form(None),
     invoice_date: date = Form(...),
     invoice_unit: str = Form(None),
+    invoice_type: str | None = Form(None),    # 图1 发票类型
     invoice_no: str = Form(None),
     invoice_code: str = Form(None),
     buyer_name: str = Form(None),
     seller_name: str = Form(None),
+    remark: str | None = Form(None),          # 图1 备注
     file: UploadFile = File(None),
     user: User = Depends(require_role("finance", "admin")),
     db: AsyncSession = Depends(get_db),
@@ -77,18 +81,32 @@ async def create_invoice(
                 invoice_no = extracted["invoice_no"]
             if not invoice_code and extracted.get("invoice_code"):
                 invoice_code = extracted["invoice_code"]
+            if not tax_rate and extracted.get("tax_rate"):
+                try:
+                    tax_rate = Decimal(extracted["tax_rate"])
+                except Exception:
+                    pass
+            if not tax_amount and extracted.get("tax_amount"):
+                try:
+                    tax_amount = Decimal(extracted["tax_amount"])
+                except Exception:
+                    pass
         except Exception as e:
             ocr_result = {"error": str(e)}
 
     invoice = Invoice(
         project_id=project_id,
         amount=amount,
+        tax_rate=tax_rate,
+        tax_amount=tax_amount,
         invoice_date=invoice_date,
         invoice_unit=invoice_unit,
+        invoice_type=invoice_type,
         invoice_no=invoice_no,
         invoice_code=invoice_code,
         buyer_name=buyer_name,
         seller_name=seller_name,
+        remark=remark,
         file_path=file_path,
         ocr_result=ocr_result,
         created_by=user.id,
@@ -97,3 +115,24 @@ async def create_invoice(
     await db.flush()
     await db.refresh(invoice)
     return InvoiceOut.model_validate(invoice)
+
+
+@router.delete("/{project_id}/invoices/{invoice_id}")
+async def delete_invoice(
+    project_id: int,
+    invoice_id: int,
+    user: User = Depends(require_role("finance", "admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """删除开票记录。"""
+    result = await db.execute(
+        select(Invoice).where(Invoice.id == invoice_id, Invoice.project_id == project_id)
+    )
+    invoice = result.scalar_one_or_none()
+    if not invoice:
+        raise NotFoundError("发票不存在")
+    
+    await db.delete(invoice)
+    await db.commit()
+    return {"message": "发票已成功删除"}
+

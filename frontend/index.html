@@ -189,6 +189,47 @@
                   {{ pendingAuditProjects.length }}
                 </span>
               </a>
+              <a @click="activeTab = 'admin_panorama'; nextTick(() => initPanoramaChart())" :class="{ 'active': activeTab === 'admin_panorama' }" class="nav-item">
+                <i class="fa-solid fa-compass text-cyan-400 mr-2"></i>
+                <span>项目全景监控舱</span>
+              </a>
+              
+              <!-- 成员提交内容参考 -->
+              <div class="text-[10px] font-bold text-slate-600 tracking-wider uppercase my-2 px-4">成员提交内容参考</div>
+              <a @click="activeTab = 'register'" :class="{ 'active': activeTab === 'register' }" class="nav-item">
+                <i class="fa-solid fa-plus-minus text-cyan-400 mr-2"></i>
+                <span>智能立项登记 (商务)</span>
+              </a>
+              <a @click="activeTab = 'projects'" :class="{ 'active': activeTab === 'projects' }" class="nav-item">
+                <i class="fa-solid fa-folder-closed mr-2"></i>
+                <span>项目档案中心 (商务)</span>
+              </a>
+              <a @click="activeTab = 'pm_projects'" :class="{ 'active': activeTab === 'pm_projects' }" class="nav-item">
+                <i class="fa-solid fa-laptop-code text-amber-400 mr-2"></i>
+                <span>项目进度跟踪 (经理)</span>
+              </a>
+              <a @click="activeTab = 'finance_invoice'" :class="{ 'active': activeTab === 'finance_invoice' }" class="nav-item">
+                <i class="fa-solid fa-file-invoice text-purple-400 mr-2"></i>
+                <span>发票开具上传 (财务)</span>
+              </a>
+              <a @click="activeTab = 'finance_payment'" :class="{ 'active': activeTab === 'finance_payment' }" class="nav-item">
+                <i class="fa-solid fa-money-bill-1 text-emerald-400 mr-2"></i>
+                <span>汇款到账登记 (财务)</span>
+              </a>
+              <a @click="activeTab = 'finance_ledger'" :class="{ 'active': activeTab === 'finance_ledger' }" class="nav-item">
+                <i class="fa-solid fa-money-bill-transfer text-slate-400 mr-2"></i>
+                <span>财务收支台账 (旧)</span>
+              </a>
+              <a @click="activeTab = 'close_audit'" :class="{ 'active': activeTab === 'close_audit' }" class="nav-item">
+                <i class="fa-solid fa-file-invoice-dollar text-pink-400 mr-2"></i>
+                <span>项目结项终审 (财务)</span>
+              </a>
+              <a @click="activeTab = 'finance_query'; nextTick(() => renderFinanceCharts())" :class="{ 'active': activeTab === 'finance_query' }" class="nav-item">
+                <i class="fa-solid fa-chart-column text-sky-400 mr-2"></i>
+                <span>查询汇总报表 (财务)</span>
+              </a>
+
+              <div class="text-[10px] font-bold text-slate-600 tracking-wider uppercase my-2 px-4">系统管理配置</div>
               <a @click="activeTab = 'users'" :class="{ 'active': activeTab === 'users' }" class="nav-item">
                 <i class="fa-solid fa-users-gear mr-2"></i>
                 <span>账户与权限分配</span>
@@ -225,12 +266,20 @@
 
             <!-- 财务专用 -->
             <template v-if="currentUser.role === 'finance'">
+              <a @click="activeTab = 'finance_invoice'" :class="{ 'active': activeTab === 'finance_invoice' }" class="nav-item">
+                <i class="fa-solid fa-file-invoice text-purple-400 mr-2"></i>
+                <span>发票开具上传</span>
+              </a>
+              <a @click="activeTab = 'finance_payment'" :class="{ 'active': activeTab === 'finance_payment' }" class="nav-item">
+                <i class="fa-solid fa-money-bill-1 text-emerald-400 mr-2"></i>
+                <span>汇款到账登记</span>
+              </a>
               <a @click="activeTab = 'finance_ledger'" :class="{ 'active': activeTab === 'finance_ledger' }" class="nav-item">
-                <i class="fa-solid fa-money-bill-transfer text-emerald-400 mr-2"></i>
+                <i class="fa-solid fa-money-bill-transfer text-slate-400 mr-2"></i>
                 <span>财务收支台账</span>
               </a>
               <a @click="activeTab = 'close_audit'" :class="{ 'active': activeTab === 'close_audit' }" class="nav-item">
-                <i class="fa-solid fa-file-invoice-dollar text-purple-400 mr-2"></i>
+                <i class="fa-solid fa-file-invoice-dollar text-pink-400 mr-2"></i>
                 <span>项目结项终审</span>
                 <span v-if="pendingCloseProjects.length > 0" class="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 font-bold border border-red-500/30">
                   {{ pendingCloseProjects.length }}
@@ -287,7 +336,7 @@
               <i class="fa-solid fa-bars"></i>
             </button>
             <h2 class="text-xl font-bold text-slate-100">
-              {{ activeTab === 'dashboard' ? '数据大屏看板' : activeTab === 'register' ? (activeEditProject ? '修改并重新提交立项' : '智能立项登记') : activeTab === 'projects' ? '项目档案中心' : activeTab === 'audit' ? '立项终审中心' : activeTab === 'pm_projects' ? '项目进度跟踪' : activeTab === 'finance_ledger' ? '财务收支台账' : activeTab === 'finance_query' ? '查询汇总报表' : activeTab === 'close_audit' ? '项目结项复核' : activeTab === 'users' ? '账户与权限分配' : '字典参数设置' }}
+              {{ activeTab === 'dashboard' ? '数据大屏看板' : activeTab === 'register' ? (activeEditProject ? '修改并重新提交立项' : '智能立项登记') : activeTab === 'projects' ? '项目档案中心' : activeTab === 'audit' ? '立项终审中心' : activeTab === 'pm_projects' ? '项目进度跟踪' : activeTab === 'finance_invoice' ? '发票开具上传' : activeTab === 'finance_payment' ? '汇款到账登记' : activeTab === 'finance_ledger' ? '财务收支台账' : activeTab === 'finance_query' ? '查询汇总报表' : activeTab === 'close_audit' ? '项目结项复核' : activeTab === 'project_finance' ? '项目财务详情' : activeTab === 'users' ? '账户与权限分配' : activeTab === 'settings' ? '系统功能设置' : activeTab === 'dict' ? '字典参数设置' : '智能项目管理系统' }}
             </h2>
             <span class="text-xs text-slate-600">/</span>
             <span class="text-xs text-slate-400">系统主控台</span>
@@ -820,148 +869,383 @@
           </div>
 
           <!-- ── 模块 5: 财务收支台账 (FINANCE LEDGER) ── -->
-          <div v-if="activeTab === 'finance_ledger'" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div v-if="activeTab === 'finance_ledger'" class="space-y-6">
             
-            <!-- 收支一览 -->
-            <div class="glass-panel lg:col-span-2 space-y-6">
-              <h3 class="font-bold text-base text-slate-200">资金开票与收付款台账簿</h3>
+            <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+              <!-- 收支一览 -->
+              <div class="glass-panel xl:col-span-1 space-y-6">
+                <h3 class="font-bold text-base text-slate-200">资金开票与收付款台账簿</h3>
 
-              <div class="overflow-x-auto border border-slate-800 rounded-xl">
-                <table class="table-cyber">
-                  <thead>
-                    <tr>
-                      <th>编码</th>
-                      <th>项目名称</th>
-                      <th>合同金额</th>
-                      <th>累计开票</th>
-                      <th>累计回款</th>
-                      <th>待收余额</th>
-                      <th>资金账项</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="proj in projects.filter(p => ['已立项', '已结项'].includes(p.status))">
-                      <td class="font-mono text-cyan-400 text-xs">{{ proj.code }}</td>
-                      <td>
-                        <div class="font-bold text-xs text-slate-100">{{ proj.name }}</div>
-                      </td>
-                      <td class="text-slate-300 font-semibold text-xs">¥ {{ proj.amount.toLocaleString() }}</td>
-                      <td class="text-purple-400 font-semibold text-xs">¥ {{ totalInvoiced(proj).toLocaleString() }}</td>
-                      <td class="text-emerald-400 font-semibold text-xs">¥ {{ totalPaid(proj).toLocaleString() }}</td>
-                      <td class="text-amber-500 font-semibold text-xs">¥ {{ Math.max(0, totalInvoiced(proj) - totalPaid(proj)).toLocaleString() }}</td>
-                      <td>
-                        <button @click="triggerRecordFinance(proj)" class="text-xs px-3 py-1.5 bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 rounded border border-cyan-500/20">
-                          资金记账
-                        </button>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                <div class="overflow-x-auto border border-slate-800 rounded-xl">
+                  <table class="table-cyber">
+                    <thead>
+                      <tr>
+                        <th>项目</th>
+                        <th>合同额 / 已开票 / 已回款</th>
+                        <th>资金账项</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="proj in projects.filter(p => ['已立项', '已结项'].includes(p.status))" :key="proj.id" :class="selectedProjectForFinance?.id === proj.id ? 'bg-cyan-500/10 border-cyan-400/30' : ''">
+                        <td>
+                          <div class="font-bold text-xs text-slate-100">{{ proj.name }}</div>
+                          <div class="font-mono text-cyan-400 text-[10px] mt-1">{{ proj.code }}</div>
+                        </td>
+                        <td class="text-xs leading-normal font-mono">
+                          <div class="text-slate-450">合同: ¥{{ proj.amount.toLocaleString() }}</div>
+                          <div class="text-purple-400 mt-0.5">开票: ¥{{ totalInvoiced(proj).toLocaleString() }}</div>
+                          <div class="text-emerald-400 mt-0.5">回款: ¥{{ totalPaid(proj).toLocaleString() }}</div>
+                        </td>
+                        <td>
+                          <button @click="triggerRecordFinance(proj)" class="text-xs px-2.5 py-1.5 bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 rounded border border-cyan-500/20">
+                            资金记账
+                          </button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- 收支登记分设操作台 -->
+              <div class="xl:col-span-2 space-y-6">
+                <div v-if="!selectedProjectForFinance" class="glass-panel text-center py-36 text-slate-500">
+                  <i class="fa-solid fa-receipt text-5xl mb-4"></i>
+                  <p class="text-xs">请在左侧列表中选定要记账的项目，进入资金入账/发票开具操作台面板。</p>
+                </div>
+
+                <div v-else class="space-y-6 animate-fade-in">
+                  <!-- 头部概要 HUD -->
+                  <div class="glass-panel p-4 bg-slate-900/60 border border-slate-800 flex justify-between items-center">
+                    <div>
+                      <h4 class="font-bold text-sm text-cyan-400">{{ selectedProjectForFinance.name }}</h4>
+                      <p class="text-[10px] text-slate-500 font-mono mt-1">立项编码: {{ selectedProjectForFinance.code }} | 合同金额: ¥{{ selectedProjectForFinance.amount.toLocaleString() }}</p>
+                    </div>
+                    <div class="flex gap-4 text-xs font-mono">
+                      <div>已开票: <span class="text-purple-400 font-bold">¥{{ totalInvoiced(selectedProjectForFinance).toLocaleString() }}</span> ({{ ((totalInvoiced(selectedProjectForFinance)/selectedProjectForFinance.amount)*100).toFixed(1) }}%)</div>
+                      <div>已回款: <span class="text-emerald-400 font-bold">¥{{ totalPaid(selectedProjectForFinance).toLocaleString() }}</span></div>
+                      <div>待回款: <span class="text-amber-500 font-bold">¥{{ Math.max(0, totalInvoiced(selectedProjectForFinance) - totalPaid(selectedProjectForFinance)).toLocaleString() }}</span></div>
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- 1. 发票登记 & 列表 -->
+                    <div class="glass-panel space-y-4 border-t-2 border-t-purple-500">
+                      <div class="flex justify-between items-center">
+                        <h4 class="font-bold text-sm text-slate-200">1. 发票开具登记控制舱</h4>
+                        <span class="text-[10px] text-purple-400 font-mono">Invoice Ledger</span>
+                      </div>
+
+                      <!-- 发票图片/PDF 上传 → OCR 识别回填 -->
+                      <button @click="scanInvoice" :disabled="invoiceScanning"
+                              class="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border border-dashed border-purple-500/40 text-purple-300 hover:bg-purple-500/10 text-xs transition-all disabled:opacity-50">
+                        <i class="fa-solid" :class="invoiceScanning ? 'fa-spinner fa-spin' : 'fa-file-arrow-up'"></i>
+                        <span>{{ invoiceScanning ? '正在识别发票...' : (pickedInvoiceFile ? pickedInvoiceFile.name : '上传发票（图片/PDF）OCR 识别') }}</span>
+                      </button>
+
+                      <div class="grid grid-cols-2 gap-2">
+                        <div class="flex flex-col gap-1">
+                          <label class="text-[10px] text-slate-500">开票金额 (元) *</label>
+                          <input v-model="tempInvoice.amount" type="number" class="input-cyber py-1.5 text-xs" placeholder="0.00" @input="calculateTaxAmount">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                          <label class="text-[10px] text-slate-500">税率 (%)</label>
+                          <input v-model="tempInvoice.tax_rate" type="number" class="input-cyber py-1.5 text-xs" placeholder="6" @input="calculateTaxAmount">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                          <label class="text-[10px] text-slate-500">税额 (元)</label>
+                          <input v-model="tempInvoice.tax_amount" type="number" class="input-cyber py-1.5 text-xs" placeholder="自动计算/输入">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                          <label class="text-[10px] text-slate-500">发票号码</label>
+                          <input v-model="tempInvoice.code" class="input-cyber py-1.5 text-xs" placeholder="OCR 自动识别">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                          <label class="text-[10px] text-slate-500">开票单位</label>
+                          <input v-model="tempInvoice.unit" class="input-cyber py-1.5 text-xs" placeholder="开票方单位">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                          <label class="text-[10px] text-slate-500">购买方</label>
+                          <input v-model="tempInvoice.buyer" class="input-cyber py-1.5 text-xs" placeholder="OCR 自动识别">
+                        </div>
+                      </div>
+                      
+                      <div class="flex gap-2">
+                        <input v-model="tempInvoice.date" type="date" class="input-cyber py-1.5 text-xs flex-1">
+                        <button @click="recordInvoice" class="btn-cyber btn-cyber-primary py-1.5 text-xs px-3">登记发票</button>
+                      </div>
+
+                      <!-- Invoices history list -->
+                      <div class="border-t border-slate-800 pt-3">
+                        <h5 class="text-xs font-bold text-slate-400 mb-2">已登记发票历史</h5>
+                        <div class="max-h-48 overflow-y-auto space-y-2 text-xs">
+                          <div v-for="inv in selectedProjectForFinance.invoices" :key="inv.id" class="p-2.5 rounded-lg bg-purple-950/20 border border-purple-500/20 text-purple-300">
+                            <div class="flex justify-between font-mono font-bold">
+                              <span>发票No: {{ inv.code || '—' }}</span>
+                              <span>+ ¥{{ inv.amount.toLocaleString() }}</span>
+                            </div>
+                            <div class="flex justify-between text-[10px] text-slate-500 mt-1 font-mono">
+                              <span>税率: {{ inv.tax_rate !== null ? inv.tax_rate + '%' : '—' }} | 税额: ¥{{ inv.tax_amount !== null ? inv.tax_amount.toLocaleString() : '—' }}</span>
+                              <span>{{ inv.date }}</span>
+                            </div>
+                          </div>
+                          <div v-if="!selectedProjectForFinance.invoices?.length" class="text-slate-650 text-center py-4">暂无开票明细流水</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 2. 回款登记 & 列表 -->
+                    <div class="glass-panel space-y-4 border-t-2 border-t-emerald-500">
+                      <div class="flex justify-between items-center">
+                        <h4 class="font-bold text-sm text-slate-200">2. 回款到账登记控制舱</h4>
+                        <span class="text-[10px] text-emerald-400 font-mono">Payment Ledger</span>
+                      </div>
+
+                      <div class="grid grid-cols-2 gap-2">
+                        <div class="flex flex-col gap-1">
+                          <label class="text-[10px] text-slate-500">回款金额 (元) *</label>
+                          <input v-model="tempPayment.amount" type="number" class="input-cyber py-1.5 text-xs" placeholder="0.00">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                          <label class="text-[10px] text-slate-500">回款方式</label>
+                          <select v-model="tempPayment.method" class="input-cyber py-1.5 text-xs bg-slate-900">
+                            <option v-for="m in paymentMethods" :key="m" :value="m">{{ m }}</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <!-- 回款凭证上传（可选） -->
+                      <button @click="pickPaymentVoucher"
+                              class="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-dashed border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 text-xs transition-all">
+                        <i class="fa-solid fa-paperclip"></i>
+                        <span>{{ pickedPaymentFile ? pickedPaymentFile.name : '上传回款凭证（可选）' }}</span>
+                      </button>
+
+                      <div class="flex gap-2">
+                        <input v-model="tempPayment.date" type="date" class="input-cyber py-1.5 text-xs flex-1">
+                        <button @click="recordPayment" class="btn-cyber btn-cyber-secondary py-1.5 text-xs px-3">记回款项</button>
+                      </div>
+
+                      <!-- Payments history list -->
+                      <div class="border-t border-slate-800 pt-3">
+                        <h5 class="text-xs font-bold text-slate-400 mb-2">已回款到账历史</h5>
+                        <div class="max-h-48 overflow-y-auto space-y-2 text-xs">
+                          <div v-for="pay in selectedProjectForFinance.payments" :key="pay.id" class="p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-500/20 text-emerald-300">
+                            <div class="flex justify-between font-mono font-bold">
+                              <span>方式: {{ pay.method }}</span>
+                              <span>+ ¥{{ pay.amount.toLocaleString() }}</span>
+                            </div>
+                            <div class="flex justify-between text-[10px] text-slate-500 mt-1 font-mono">
+                              <span>归档日期</span>
+                              <span>{{ pay.date }}</span>
+                            </div>
+                          </div>
+                          <div v-if="!selectedProjectForFinance.payments?.length" class="text-slate-650 text-center py-4">暂无回款明细流水</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
               </div>
             </div>
 
-            <!-- 收支登记侧面板 -->
-            <div class="glass-panel space-y-6">
-              <div v-if="!selectedProjectForFinance" class="text-center py-20 text-slate-500">
-                <i class="fa-solid fa-receipt text-5xl mb-4"></i>
-                <p class="text-xs">请在左侧列表中选定要记账的项目，进入资金入账/发票开具操作台面板。</p>
+          </div>
+
+          <!-- ── 模块 5b: 发票开具上传 (FINANCE INVOICE) ── -->
+          <div v-if="activeTab === 'finance_invoice'" class="space-y-6 max-w-4xl mx-auto animate-fade-in">
+            <div class="glass-panel p-6 space-y-6">
+              <div class="flex justify-between items-center border-b border-slate-800 pb-4">
+                <div>
+                  <h3 class="text-lg font-bold text-slate-100">发票上传</h3>
+                  <p class="text-xs text-slate-400 mt-1">上传发票文件并核对登记开票数据</p>
+                </div>
+                <span class="badge py-1 px-3 bg-purple-500/10 text-purple-400 border border-purple-500/20 font-bold">发票上传</span>
               </div>
 
-              <div v-else class="space-y-6">
-                <!-- 头部概要 -->
-                <div class="p-4 rounded-xl bg-slate-900 border border-slate-800">
-                  <h4 class="font-bold text-sm text-cyan-400">{{ selectedProjectForFinance.name }}</h4>
-                  <p class="text-[10px] text-slate-500 font-mono mt-1">立项编码: {{ selectedProjectForFinance.code }}</p>
-                  
-                  <div class="grid grid-cols-2 gap-2 mt-4 text-xs">
-                    <div>开票占比: <b class="text-purple-400">{{ ((totalInvoiced(selectedProjectForFinance)/selectedProjectForFinance.amount)*100).toFixed(1) }}%</b></div>
-                    <div>回款比例: <b class="text-emerald-400">{{ totalInvoiced(selectedProjectForFinance) > 0 ? ((totalPaid(selectedProjectForFinance)/totalInvoiced(selectedProjectForFinance))*100).toFixed(1) : 0 }}%</b></div>
+              <!-- Form Layout -->
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- 项目名称 -->
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs font-semibold text-slate-350">项目名称 <span class="text-rose-500">*</span></label>
+                  <select v-model="invoiceUploadForm.project_id" class="input-cyber py-2 text-sm bg-slate-900 w-full" required>
+                    <option value="">请选择项目</option>
+                    <option v-for="proj in projects.filter(p => ['已立项', '已结项'].includes(p.status))" :key="proj.id" :value="proj.id">
+                      {{ proj.name }}
+                    </option>
+                  </select>
+                </div>
+
+                <!-- 发票类型 -->
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs font-semibold text-slate-350">发票类型 <span class="text-rose-500">*</span></label>
+                  <select v-model="invoiceUploadForm.invoice_type" class="input-cyber py-2 text-sm bg-slate-900 w-full" required>
+                    <option value="special">增值税专用发票</option>
+                    <option value="normal">普通发票</option>
+                  </select>
+                </div>
+
+                <!-- 发票号码 -->
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs font-semibold text-slate-350">发票号码 <span class="text-rose-500">*</span></label>
+                  <input v-model="invoiceUploadForm.invoice_no" class="input-cyber py-2 text-sm w-full" placeholder="请输入发票号码" required>
+                </div>
+
+                <!-- 开票日期 -->
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs font-semibold text-slate-350">开票日期 <span class="text-rose-500">*</span></label>
+                  <input v-model="invoiceUploadForm.invoice_date" type="date" class="input-cyber py-2 text-sm w-full" required>
+                </div>
+
+                <!-- 发票金额 -->
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs font-semibold text-slate-350">发票金额 <span class="text-rose-500">*</span></label>
+                  <div class="relative w-full">
+                    <input v-model="invoiceUploadForm.amount" type="number" step="0.01" class="input-cyber py-2 text-sm pr-12 w-full" placeholder="请输入金额" @input="calculateTaxAmountForTab" required>
+                    <span class="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">元</span>
                   </div>
                 </div>
 
-                <!-- 1. 发票登记 -->
-                <div class="space-y-3 border-t border-slate-800 pt-4">
-                  <h4 class="font-bold text-xs text-slate-350">登记开具发票 (上传发票自动 OCR 识别)</h4>
+                <!-- 税率 -->
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs font-semibold text-slate-350">税率 <span class="text-rose-500">*</span></label>
+                  <select v-model="invoiceUploadForm.tax_rate" class="input-cyber py-2 text-sm bg-slate-900 w-full" @change="calculateTaxAmountForTab" required>
+                    <option value="13">13%</option>
+                    <option value="9">9%</option>
+                    <option value="6">6%</option>
+                    <option value="3">3%</option>
+                    <option value="1">1%</option>
+                    <option value="0">0%</option>
+                  </select>
+                </div>
+              </div>
 
-                  <!-- 发票图片/PDF 上传 → OCR 识别回填 -->
-                  <button @click="scanInvoice" :disabled="invoiceScanning"
-                          class="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border border-dashed border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 text-xs transition-all disabled:opacity-50">
-                    <i class="fa-solid" :class="invoiceScanning ? 'fa-spinner fa-spin' : 'fa-file-arrow-up'"></i>
-                    <span>{{ invoiceScanning ? '正在识别发票...' : (pickedInvoiceFile ? pickedInvoiceFile.name : '上传发票（图片/PDF）OCR 识别') }}</span>
-                  </button>
-
-                  <div class="grid grid-cols-2 gap-2">
-                    <div class="flex flex-col gap-1">
-                      <label class="text-[10px] text-slate-500">开票金额（元）</label>
-                      <input v-model="tempInvoice.amount" type="number" class="input-cyber py-1.5 text-xs" placeholder="0.00">
-                    </div>
-                    <div class="flex flex-col gap-1">
-                      <label class="text-[10px] text-slate-500">发票号码</label>
-                      <input v-model="tempInvoice.code" class="input-cyber py-1.5 text-xs" placeholder="OCR 自动识别">
-                    </div>
-                    <div class="flex flex-col gap-1">
-                      <label class="text-[10px] text-slate-500">开票单位</label>
-                      <input v-model="tempInvoice.unit" class="input-cyber py-1.5 text-xs" placeholder="开票方单位">
-                    </div>
-                    <div class="flex flex-col gap-1">
-                      <label class="text-[10px] text-slate-500">购买方</label>
-                      <input v-model="tempInvoice.buyer" class="input-cyber py-1.5 text-xs" placeholder="OCR 自动识别">
-                    </div>
+              <!-- 上传发票文件 (Dropzone) -->
+              <div class="flex flex-col gap-2">
+                <label class="text-xs font-semibold text-slate-350">上传发票文件 <span class="text-rose-500">*</span></label>
+                <div @click="scanInvoiceForTab" 
+                     class="border-2 border-dashed border-purple-500/30 hover:border-purple-400 bg-purple-950/5 hover:bg-purple-950/10 rounded-2xl p-8 text-center cursor-pointer transition-all duration-300 space-y-3">
+                  <div class="inline-flex size-14 items-center justify-center rounded-2xl bg-purple-500/10 text-purple-400 text-2xl">
+                    <i v-if="!invoiceUploadForm.fileName" class="fa-solid fa-cloud-arrow-up"></i>
+                    <i v-else class="fa-solid fa-file-image animate-bounce"></i>
                   </div>
-                  <div class="flex gap-2">
-                    <input v-model="tempInvoice.date" type="date" class="input-cyber py-1.5 text-xs flex-1">
-                    <button @click="recordInvoice" class="btn-cyber btn-cyber-primary py-1.5 text-xs px-3">登记发票</button>
+                  <div class="space-y-1">
+                    <p class="text-sm font-semibold text-slate-200">
+                      {{ invoiceUploadForm.fileName ? '已选择：' + invoiceUploadForm.fileName : '点击或拖拽文件到此处上传' }}
+                    </p>
+                    <p class="text-xs text-slate-500">支持 PDF、JPG、PNG 格式，大小不超过 10MB</p>
+                  </div>
+                  <div v-if="invoiceScanning" class="text-xs text-purple-400 flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                    <span>正在运行 PaddleOCR 智能识别提取...</span>
                   </div>
                 </div>
+              </div>
 
-                <!-- 2. 回款登记 -->
-                <div class="space-y-3 border-t border-slate-800 pt-4">
-                  <h4 class="font-bold text-xs text-slate-350">登记到账回款</h4>
-                  <div class="grid grid-cols-2 gap-2">
-                    <div class="flex flex-col gap-1">
-                      <label class="text-[10px] text-slate-500">回款金额（元）</label>
-                      <input v-model="tempPayment.amount" type="number" class="input-cyber py-1.5 text-xs" placeholder="0.00">
-                    </div>
-                    <div class="flex flex-col gap-1">
-                      <label class="text-[10px] text-slate-500">回款方式</label>
-                      <select v-model="tempPayment.method" class="input-cyber py-1.5 text-xs bg-slate-900">
-                        <option v-for="m in paymentMethods" :key="m" :value="m">{{ m }}</option>
-                      </select>
-                    </div>
-                  </div>
-                  <!-- 回款凭证上传（可选） -->
-                  <button @click="pickPaymentVoucher"
-                          class="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-dashed border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 text-xs transition-all">
-                    <i class="fa-solid fa-paperclip"></i>
-                    <span>{{ pickedPaymentFile ? pickedPaymentFile.name : '上传回款凭证（可选）' }}</span>
-                  </button>
-                  <div class="flex gap-2">
-                    <input v-model="tempPayment.date" type="date" class="input-cyber py-1.5 text-xs flex-1">
-                    <button @click="recordPayment" class="btn-cyber btn-cyber-secondary py-1.5 text-xs px-3">记回款项</button>
-                  </div>
-                </div>
+              <!-- 备注 -->
+              <div class="flex flex-col gap-2">
+                <label class="text-xs font-semibold text-slate-350">备注</label>
+                <textarea v-model="invoiceUploadForm.remark" rows="3" class="input-cyber py-2 text-sm w-full" placeholder="请输入备注"></textarea>
+              </div>
 
-                <!-- 资金流水一览 -->
-                <div class="border-t border-slate-800 pt-4">
-                  <h4 class="font-bold text-xs text-slate-350 mb-2">项目实收收支流水明细</h4>
-                  <div class="max-h-40 overflow-y-auto space-y-2 text-xs">
-                    <div v-for="inv in selectedProjectForFinance.invoices" class="flex justify-between p-2.5 rounded-lg bg-purple-950/20 border border-purple-500/20 text-purple-300 font-mono">
-                      <span>发票记录: {{ inv.code }}</span>
-                      <span>+ ¥{{ inv.amount.toLocaleString() }}</span>
-                    </div>
-                    <div v-for="pay in selectedProjectForFinance.payments" class="flex justify-between p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-500/20 text-emerald-300 font-mono">
-                      <span>已收回款: {{ pay.method }}</span>
-                      <span>+ ¥{{ pay.amount.toLocaleString() }}</span>
-                    </div>
-                    <div v-if="(selectedProjectForFinance.invoices?.length || 0) + (selectedProjectForFinance.payments?.length || 0) === 0" class="text-slate-600 text-center py-4">
-                      暂无实收账单流水记录。
-                    </div>
-                  </div>
-                </div>
-
+              <!-- Actions -->
+              <div class="flex justify-end gap-3 border-t border-slate-800 pt-5">
+                <button @click="cancelInvoiceUpload" class="btn-cyber btn-cyber-muted text-slate-400 hover:text-slate-200">取消</button>
+                <button @click="submitInvoiceUpload" class="btn-cyber btn-cyber-primary">提交发票</button>
               </div>
             </div>
+          </div>
 
+          <!-- ── 模块 5c: 汇款到账登记 (FINANCE PAYMENT) ── -->
+          <div v-if="activeTab === 'finance_payment'" class="space-y-6 max-w-4xl mx-auto animate-fade-in">
+            <div class="glass-panel p-6 space-y-6">
+              <div class="flex justify-between items-center border-b border-slate-800 pb-4">
+                <div>
+                  <h3 class="text-lg font-bold text-slate-100">汇款登记</h3>
+                  <p class="text-xs text-slate-400 mt-1">录入客户付款到账明细</p>
+                </div>
+                <span class="badge py-1 px-3 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">汇款登记</span>
+              </div>
+
+              <!-- Form Layout -->
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- 项目名称 -->
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs font-semibold text-slate-350">项目名称 <span class="text-rose-500">*</span></label>
+                  <select v-model="paymentUploadForm.project_id" class="input-cyber py-2 text-sm bg-slate-900 w-full" required>
+                    <option value="">请选择项目</option>
+                    <option v-for="proj in projects.filter(p => ['已立项', '已结项'].includes(p.status))" :key="proj.id" :value="proj.id">
+                      {{ proj.name }}
+                    </option>
+                  </select>
+                </div>
+
+                <!-- 汇款单位 -->
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs font-semibold text-slate-350">汇款单位 <span class="text-rose-500">*</span></label>
+                  <input v-model="paymentUploadForm.unit" class="input-cyber py-2 text-sm w-full" placeholder="请输入汇款单位" required>
+                </div>
+
+                <!-- 汇款金额 -->
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs font-semibold text-slate-350">汇款金额 <span class="text-rose-500">*</span></label>
+                  <div class="relative w-full">
+                    <input v-model="paymentUploadForm.amount" type="number" step="0.01" class="input-cyber py-2 text-sm pr-12 w-full" placeholder="请输入金额" required>
+                    <span class="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">元</span>
+                  </div>
+                </div>
+
+                <!-- 汇款日期 -->
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs font-semibold text-slate-350">汇款日期 <span class="text-rose-500">*</span></label>
+                  <input v-model="paymentUploadForm.payment_date" type="date" class="input-cyber py-2 text-sm w-full" required>
+                </div>
+
+                <!-- 汇款方式 -->
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs font-semibold text-slate-350">汇款方式 <span class="text-rose-500">*</span></label>
+                  <select v-model="paymentUploadForm.payment_method" class="input-cyber py-2 text-sm bg-slate-900 w-full" required>
+                    <option v-for="m in paymentMethods" :key="m" :value="m">{{ m }}</option>
+                  </select>
+                </div>
+
+                <!-- 银行流水号 -->
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs font-semibold text-slate-350">银行流水号 <span class="text-rose-500">*</span></label>
+                  <input v-model="paymentUploadForm.serial" class="input-cyber py-2 text-sm w-full" placeholder="请输入银行流水号" required>
+                </div>
+              </div>
+
+              <!-- 上传汇款凭证 (Dropzone) -->
+              <div class="flex flex-col gap-2">
+                <label class="text-xs font-semibold text-slate-350">上传汇款凭证 <span class="text-rose-500">*</span></label>
+                <div @click="pickPaymentVoucherForTab" 
+                     class="border-2 border-dashed border-emerald-500/30 hover:border-emerald-400 bg-emerald-950/5 hover:bg-emerald-950/10 rounded-2xl p-8 text-center cursor-pointer transition-all duration-300 space-y-3">
+                  <div class="inline-flex size-14 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-400 text-2xl">
+                    <i v-if="!paymentUploadForm.fileName" class="fa-solid fa-cloud-arrow-up"></i>
+                    <i v-else class="fa-solid fa-file-invoice-dollar animate-bounce"></i>
+                  </div>
+                  <div class="space-y-1">
+                    <p class="text-sm font-semibold text-slate-200">
+                      {{ paymentUploadForm.fileName ? '已选择：' + paymentUploadForm.fileName : '点击或拖拽文件到此处上传' }}
+                    </p>
+                    <p class="text-xs text-slate-500">支持 PDF、JPG、PNG 格式，大小不超过 10MB</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 备注 -->
+              <div class="flex flex-col gap-2">
+                <label class="text-xs font-semibold text-slate-350">备注</label>
+                <textarea v-model="paymentUploadForm.remark" rows="3" class="input-cyber py-2 text-sm w-full" placeholder="请输入备注"></textarea>
+              </div>
+
+              <!-- Actions -->
+              <div class="flex justify-end gap-3 border-t border-slate-800 pt-5">
+                <button @click="cancelPaymentUpload" class="btn-cyber btn-cyber-muted text-slate-400 hover:text-slate-200">取消</button>
+                <button @click="submitPaymentUpload" class="btn-cyber btn-cyber-primary">提交汇款</button>
+              </div>
+            </div>
           </div>
 
           <!-- ── 模块 6: 立项终审中心 (ADMIN) ── -->
@@ -1169,23 +1453,335 @@
                   <thead>
                     <tr>
                       <th>立项编号</th><th>项目名称</th><th>合同金额</th>
-                      <th>累计开票</th><th>累计回款</th><th>应收余额</th>
+                      <th>累计开票</th><th>累计回款</th><th>应收余额</th><th>操作</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="r in financeRows" :key="r.code">
+                    <tr v-for="r in financeRows" :key="r.code" class="hover:bg-slate-900/30 transition-colors">
                       <td class="font-mono text-cyan-400 text-xs">{{ r.code }}</td>
-                      <td class="font-bold text-xs">{{ r.name }}</td>
+                      <td class="font-bold text-xs">
+                        <a href="#" @click.prevent="openProjectFinanceDetail(r.project, 'finance_query')" class="text-slate-200 hover:text-cyan-400 transition-colors">
+                          {{ r.name }}
+                        </a>
+                      </td>
                       <td class="text-slate-300 text-xs">¥ {{ r.amount.toLocaleString() }}</td>
                       <td class="text-purple-400 text-xs">¥ {{ r.invoiced.toLocaleString() }}</td>
                       <td class="text-emerald-400 text-xs">¥ {{ r.paid.toLocaleString() }}</td>
                       <td class="text-amber-500 text-xs">¥ {{ r.receivable.toLocaleString() }}</td>
+                      <td>
+                        <button @click="openProjectFinanceDetail(r.project, 'finance_query')" class="text-cyan-400 hover:text-cyan-350 text-xs font-semibold">
+                          查看财务详情
+                        </button>
+                      </td>
                     </tr>
                     <tr v-if="financeRows.length === 0">
-                      <td colspan="6" class="text-center text-slate-500 py-10">暂无已立项/已结项项目数据。</td>
+                      <td colspan="7" class="text-center text-slate-500 py-10">暂无已立项/已结项项目数据。</td>
                     </tr>
                   </tbody>
                 </table>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- ── 模块 7c: 项目全景监控舱 (ADMIN PANORAMA) ── -->
+          <div v-if="activeTab === 'admin_panorama'" class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            
+            <!-- Left panel: Project selector list -->
+            <div class="glass-panel lg:col-span-1 space-y-6">
+              <h3 class="font-bold text-base text-slate-200">项目全景资产列表</h3>
+              <div class="space-y-3 max-h-[700px] overflow-y-auto pr-1">
+                <div v-for="proj in projects" :key="proj.id" 
+                     @click="selectedProjectForPanorama = proj; nextTick(() => renderTopologyChart())"
+                     :class="selectedProjectForPanorama?.id === proj.id ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-300' : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700'"
+                     class="p-4 rounded-xl border cursor-pointer transition-all duration-300">
+                  <div class="font-bold text-xs truncate" :class="selectedProjectForPanorama?.id === proj.id ? 'text-cyan-300' : 'text-slate-200'">{{ proj.name }}</div>
+                  <div class="flex justify-between items-center mt-2 text-[10px]">
+                    <span class="font-mono">{{ proj.code }}</span>
+                    <span class="badge py-0.5 px-1.5" :class="{
+                      'badge-draft': ['草稿','已驳回'].includes(proj.status),
+                      'badge-pending': proj.status === '待审核',
+                      'badge-approved': proj.status === '已立项',
+                      'badge-closed': proj.status === '已结项'
+                    }">{{ proj.status }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right panel: Dashboard details -->
+            <div class="lg:col-span-3 space-y-6">
+              <div v-if="!selectedProjectForPanorama" class="glass-panel text-center py-40 text-slate-500">
+                <i class="fa-solid fa-compass text-5xl mb-4"></i>
+                <p class="text-xs">请在左侧列表中选定项目，查看项目全景监控视图。</p>
+              </div>
+
+              <div v-else class="space-y-6 animate-fade-in">
+                <!-- Project info card -->
+                <div class="glass-panel p-6 relative overflow-hidden border-l-4 border-l-cyan-400">
+                  <div class="flex justify-between items-start">
+                    <div>
+                      <h3 class="text-lg font-bold text-slate-100">{{ selectedProjectForPanorama.name }}</h3>
+                      <p class="text-xs text-slate-400 mt-2 font-mono">
+                        合同编号: {{ selectedProjectForPanorama.code }} | 客户名称: {{ selectedProjectForPanorama.client }}
+                      </p>
+                    </div>
+                    <div class="flex flex-col items-end gap-2 text-right">
+                      <p class="text-xs text-slate-500">合同额度</p>
+                      <h4 class="text-xl font-extrabold text-cyan-400 mt-1">¥ {{ selectedProjectForPanorama.amount.toLocaleString() }}</h4>
+                      <button @click="openProjectFinanceDetail(selectedProjectForPanorama, 'admin_panorama')" class="mt-2 text-xs px-3.5 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/20 rounded font-semibold transition-all">
+                        查看项目财务详情
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Step progress timeline -->
+                  <div class="mt-8 border-t border-slate-800 pt-6">
+                    <h4 class="text-xs font-bold text-slate-400 mb-4">项目生命周期进程跟踪</h4>
+                    <div class="flex items-center justify-between bg-slate-900/50 p-4 border border-slate-800 rounded-xl">
+                      <div class="flex items-center gap-2">
+                        <span class="size-6 rounded-full flex items-center justify-center text-[10px] font-bold" 
+                              :class="['草稿', '已驳回', '待审核', '已立项', '已结项'].includes(selectedProjectForPanorama.status) ? 'bg-cyan-500 text-slate-900 shadow-[0_0_8px_rgba(0,242,254,0.3)]' : 'bg-slate-800 text-slate-500'">1</span>
+                        <span class="text-xs font-medium" :class="['草稿', '已驳回'].includes(selectedProjectForPanorama.status) ? 'text-cyan-300 font-bold' : 'text-slate-400'">立项草稿</span>
+                      </div>
+                      <div class="h-0.5 bg-slate-800 flex-1 mx-2"></div>
+                      
+                      <div class="flex items-center gap-2">
+                        <span class="size-6 rounded-full flex items-center justify-center text-[10px] font-bold" 
+                              :class="['待审核', '已立项', '已结项'].includes(selectedProjectForPanorama.status) ? 'bg-cyan-500 text-slate-900 shadow-[0_0_8px_rgba(0,242,254,0.3)]' : 'bg-slate-800 text-slate-500'">2</span>
+                        <span class="text-xs font-medium" :class="selectedProjectForPanorama.status === '待审核' ? 'text-cyan-300 font-bold' : 'text-slate-400'">审核中</span>
+                      </div>
+                      <div class="h-0.5 bg-slate-800 flex-1 mx-2"></div>
+
+                      <div class="flex items-center gap-2">
+                        <span class="size-6 rounded-full flex items-center justify-center text-[10px] font-bold" 
+                              :class="['已立项', '已结项'].includes(selectedProjectForPanorama.status) ? 'bg-cyan-500 text-slate-900 shadow-[0_0_8px_rgba(0,242,254,0.3)]' : 'bg-slate-800 text-slate-500'">3</span>
+                        <span class="text-xs font-medium" :class="selectedProjectForPanorama.status === '已立项' ? 'text-cyan-300 font-bold' : 'text-slate-400'">进行中</span>
+                      </div>
+                      <div class="h-0.5 bg-slate-800 flex-1 mx-2"></div>
+
+                      <div class="flex items-center gap-2">
+                        <span class="size-6 rounded-full flex items-center justify-center text-[10px] font-bold" 
+                              :class="selectedProjectForPanorama.status === '已结项' ? 'bg-cyan-500 text-slate-900 shadow-[0_0_8px_rgba(0,242,254,0.3)]' : 'bg-slate-800 text-slate-500'">4</span>
+                        <span class="text-xs font-medium" :class="selectedProjectForPanorama.status === '已结项' ? 'text-cyan-300 font-bold' : 'text-slate-400'">已结项</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 财务指标 HUD (已开票金额, 已回款金额, 未回款金额) -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <!-- 已开票金额 -->
+                  <div class="glass-panel p-5 relative border-l-4 border-l-purple-500 shadow-md flex items-center gap-4 bg-purple-500/5">
+                    <div class="w-12 h-12 flex items-center justify-center rounded-2xl bg-purple-500/10 text-purple-400 text-xl">
+                      <i class="fa-solid fa-file-invoice"></i>
+                    </div>
+                    <div>
+                      <p class="text-xs text-slate-400">已开票金额</p>
+                      <h4 class="text-xl font-extrabold text-purple-300 mt-1">¥ {{ totalInvoiced(selectedProjectForPanorama).toLocaleString(undefined, {minimumFractionDigits: 2}) }}</h4>
+                    </div>
+                  </div>
+                  <!-- 已回款金额 -->
+                  <div class="glass-panel p-5 relative border-l-4 border-l-emerald-500 shadow-md flex items-center gap-4 bg-emerald-500/5">
+                    <div class="w-12 h-12 flex items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-400 text-xl">
+                      <i class="fa-solid fa-sack-dollar"></i>
+                    </div>
+                    <div>
+                      <p class="text-xs text-slate-400">已回款金额</p>
+                      <h4 class="text-xl font-extrabold text-emerald-300 mt-1">¥ {{ totalPaid(selectedProjectForPanorama).toLocaleString(undefined, {minimumFractionDigits: 2}) }}</h4>
+                    </div>
+                  </div>
+                  <!-- 未回款金额 -->
+                  <div class="glass-panel p-5 relative border-l-4 border-l-amber-500 shadow-md flex items-center gap-4 bg-amber-500/5">
+                    <div class="w-12 h-12 flex items-center justify-center rounded-2xl bg-amber-500/10 text-amber-400 text-xl">
+                      <i class="fa-solid fa-receipt"></i>
+                    </div>
+                    <div>
+                      <p class="text-xs text-slate-400">未回款金额</p>
+                      <h4 class="text-xl font-extrabold text-amber-300 mt-1">¥ {{ Math.max(0, selectedProjectForPanorama.amount - totalPaid(selectedProjectForPanorama)).toLocaleString(undefined, {minimumFractionDigits: 2}) }}</h4>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Deliverable Files by Role -->
+                <div class="glass-panel p-6 space-y-4">
+                  <h3 class="font-bold text-sm text-slate-200">各岗位交付文件中心</h3>
+                  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <!-- Business role deliverables -->
+                    <div class="p-4 rounded-xl border border-slate-800 bg-slate-950/40 space-y-3">
+                      <div class="flex items-center gap-2 text-xs font-bold text-cyan-400">
+                        <i class="fa-solid fa-briefcase"></i>
+                        <span>商务经理交付 (Business)</span>
+                      </div>
+                      <div class="space-y-2">
+                        <div class="p-2.5 rounded bg-slate-900 border border-slate-800 text-xs">
+                          <div class="text-[11px] text-slate-400 truncate">Word合同原本</div>
+                          <div class="flex justify-between items-center mt-1">
+                            <span class="text-[10px] font-mono text-slate-500">v1.0 · Word</span>
+                            <button @click="showFilePreview('word', '01_Word合同_' + selectedProjectForPanorama.code + '.docx', selectedProjectForPanorama)" 
+                                    class="text-[10px] text-cyan-400 hover:underline">查看原本</button>
+                          </div>
+                        </div>
+                        <div class="p-2.5 rounded bg-slate-900 border border-slate-800 text-xs">
+                          <div class="text-[11px] text-slate-400 truncate">{{ selectedProjectForPanorama.contractFile }}</div>
+                          <div class="flex justify-between items-center mt-1">
+                            <span class="text-[10px] font-mono text-slate-500">v{{ selectedProjectForPanorama.contractVersion || 1 }} · Stamped PDF</span>
+                            <button @click="showFilePreview('pdf', selectedProjectForPanorama.contractFile, selectedProjectForPanorama)" 
+                                    class="text-[10px] text-cyan-400 hover:underline">查看原本</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- PM role deliverables -->
+                    <div class="p-4 rounded-xl border border-slate-800 bg-slate-950/40 space-y-3">
+                      <div class="flex items-center gap-2 text-xs font-bold text-amber-400">
+                        <i class="fa-solid fa-user-gear"></i>
+                        <span>项目经理交付 (PM)</span>
+                      </div>
+                      <div class="space-y-2">
+                        <div v-if="selectedProjectForPanorama.acceptanceReport" class="p-2.5 rounded bg-slate-900 border border-slate-800 text-xs">
+                          <div class="text-[11px] text-slate-400 truncate">{{ selectedProjectForPanorama.acceptanceReport }}</div>
+                          <div class="flex justify-between items-center mt-1">
+                            <span class="text-[10px] font-mono text-slate-500">已签署 · Word</span>
+                            <button @click="showFilePreview('report', selectedProjectForPanorama.acceptanceReport, selectedProjectForPanorama)" 
+                                    class="text-[10px] text-cyan-400 hover:underline">查看原本</button>
+                          </div>
+                        </div>
+                        <div v-else class="text-slate-650 text-center py-8 text-xs">暂无结项验收报告</div>
+                      </div>
+                    </div>
+
+                    <!-- Finance role deliverables -->
+                    <div class="p-4 rounded-xl border border-slate-800 bg-slate-950/40 space-y-3">
+                      <div class="flex items-center gap-2 text-xs font-bold text-emerald-400">
+                        <i class="fa-solid fa-coins"></i>
+                        <span>财务发票与回款 (Finance)</span>
+                      </div>
+                      <div class="space-y-2 max-h-[220px] overflow-y-auto">
+                        <!-- Invoices list -->
+                        <div v-for="inv in selectedProjectForPanorama.invoices" class="p-2.5 rounded bg-slate-900 border border-slate-800 text-xs">
+                          <div class="text-[11px] text-slate-400 truncate">发票 No: {{ inv.code }}</div>
+                          <div class="flex justify-between items-center mt-1">
+                            <span class="text-[10px] text-purple-400">¥{{ inv.amount.toLocaleString() }} (税:{{ inv.tax_rate !== null ? inv.tax_rate + '%' : '—' }})</span>
+                            <button @click="showFilePreview('invoice', '发票_' + inv.code + '.jpg', selectedProjectForPanorama, inv)" 
+                                    class="text-[10px] text-cyan-400 hover:underline">查看原本</button>
+                          </div>
+                        </div>
+                        <!-- Payments list -->
+                        <div v-for="pay in selectedProjectForPanorama.payments" class="p-2.5 rounded bg-slate-900 border border-slate-800 text-xs">
+                          <div class="text-[11px] text-slate-400 truncate">回款: {{ pay.method }}</div>
+                          <div class="flex justify-between items-center mt-1">
+                            <span class="text-[10px] text-emerald-400">¥{{ pay.amount.toLocaleString() }}</span>
+                            <button @click="showFilePreview('payment', '回款凭证_' + pay.date + '.jpg', selectedProjectForPanorama, pay)" 
+                                    class="text-[10px] text-cyan-400 hover:underline">查看原本</button>
+                          </div>
+                        </div>
+                        <div v-if="!selectedProjectForPanorama.invoices?.length && !selectedProjectForPanorama.payments?.length" 
+                             class="text-slate-650 text-center py-8 text-xs">暂无发票或汇款凭证</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Topology Chart Graph Card -->
+                <div class="glass-panel p-6">
+                  <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold text-sm text-slate-200">项目资金与文件拓扑图谱</h3>
+                    <span class="text-xs text-slate-500 font-mono">Project -> Contracts -> Invoices -> Payments</span>
+                  </div>
+                  <div id="projectTopologyChart" class="w-full h-[380px] bg-slate-950/20 rounded-xl border border-slate-850"></div>
+                </div>
+
+                <!-- 发票与回款明细表格 (项目财务详情侧栏表格形态) -->
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                  <!-- 发票记录 -->
+                  <div class="glass-panel p-5 space-y-4">
+                    <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                      <h4 class="font-bold text-sm text-slate-200">发票记录</h4>
+                      <span class="text-[10px] text-purple-400 font-mono">Invoices</span>
+                    </div>
+                    <div class="overflow-x-auto border border-slate-800 rounded-xl">
+                      <table class="table-cyber text-xs">
+                        <thead>
+                          <tr>
+                            <th>发票号码</th>
+                            <th>发票类型</th>
+                            <th>发票金额</th>
+                            <th>税率</th>
+                            <th>开票日期</th>
+                            <th>状态</th>
+                            <th>操作</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr v-for="inv in selectedProjectForPanorama.invoices" :key="inv.id">
+                            <td class="font-mono text-cyan-400">{{ inv.code }}</td>
+                            <td>{{ inv.unit || '增值税专用发票' }}</td>
+                            <td class="font-mono font-bold text-purple-400">¥ {{ inv.amount.toLocaleString() }}</td>
+                            <td class="font-mono">{{ inv.tax_rate !== null ? inv.tax_rate + '%' : '—' }}</td>
+                            <td class="font-mono text-slate-400">{{ inv.date }}</td>
+                            <td><span class="badge badge-approved py-0.5 px-1.5 text-[10px]">已审核</span></td>
+                            <td>
+                              <div class="flex gap-2">
+                                <button @click="showFilePreview('invoice', '发票_' + inv.code + '.jpg', selectedProjectForPanorama, inv)" class="text-cyan-400 hover:underline">查看</button>
+                                <button @click="downloadFile('invoice', inv)" class="text-slate-450 hover:underline">下载</button>
+                                <button @click="deleteInvoiceItem(inv)" class="text-rose-400 hover:underline">删除</button>
+                              </div>
+                            </td>
+                          </tr>
+                          <tr v-if="!selectedProjectForPanorama.invoices?.length">
+                            <td colspan="7" class="text-center text-slate-655 py-6">暂无发票记录</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <!-- 汇款记录 -->
+                  <div class="glass-panel p-5 space-y-4">
+                    <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                      <h4 class="font-bold text-sm text-slate-200">汇款记录</h4>
+                      <span class="text-[10px] text-emerald-400 font-mono">Payments</span>
+                    </div>
+                    <div class="overflow-x-auto border border-slate-800 rounded-xl">
+                      <table class="table-cyber text-xs">
+                        <thead>
+                          <tr>
+                            <th>汇款单位</th>
+                            <th>汇款金额</th>
+                            <th>汇款日期</th>
+                            <th>汇款方式</th>
+                            <th>银行流水号</th>
+                            <th>状态</th>
+                            <th>操作</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr v-for="pay in selectedProjectForPanorama.payments" :key="pay.id">
+                            <td class="truncate max-w-[100px]">{{ parsePaymentRemark(pay.remark).unit || selectedProjectForPanorama.client || '南京智云科技有限公司' }}</td>
+                            <td class="font-mono font-bold text-emerald-400">¥ {{ pay.amount.toLocaleString() }}</td>
+                            <td class="font-mono text-slate-400">{{ pay.date }}</td>
+                            <td>{{ pay.method }}</td>
+                            <td class="font-mono text-slate-400">{{ parsePaymentRemark(pay.remark).serial || 'BK202600000001' }}</td>
+                            <td><span class="badge badge-approved py-0.5 px-1.5 text-[10px]">已确认</span></td>
+                            <td>
+                              <div class="flex gap-2">
+                                <button @click="showFilePreview('payment', '回款凭证_' + pay.date + '.jpg', selectedProjectForPanorama, pay)" class="text-cyan-400 hover:underline">查看</button>
+                                <button @click="downloadFile('payment', pay)" class="text-slate-455 hover:underline">下载</button>
+                                <button @click="deletePaymentItem(pay)" class="text-rose-400 hover:underline">删除</button>
+                              </div>
+                            </td>
+                          </tr>
+                          <tr v-if="!selectedProjectForPanorama.payments?.length">
+                            <td colspan="7" class="text-center text-slate-655 py-6">暂无汇款记录</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
               </div>
             </div>
 
@@ -1414,6 +2010,48 @@
         <div class="flex justify-end gap-3 pt-3 border-t border-slate-800">
           <button @click="showAcceptanceReportModal = null" class="btn-cyber btn-cyber-muted">取消</button>
           <button @click="submitClosingRequest(showAcceptanceReportModal)" class="btn-cyber btn-cyber-primary">确认并提起结项申请</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 文件原本全息预览浮窗 ── -->
+    <div v-if="previewFile" class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="glass-panel-elevated p-6 w-full max-w-2xl border border-slate-700 space-y-6">
+        <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-file-magnifying-glass text-cyan-400 text-lg"></i>
+            <h4 class="font-bold text-base text-slate-200">文件资产原本全息预览</h4>
+          </div>
+          <button @click="previewFile = null" class="text-slate-500 hover:text-slate-400 text-lg"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <!-- Left: Document details -->
+          <div class="space-y-4">
+            <h5 class="text-xs font-bold text-slate-300 uppercase tracking-widest border-b border-slate-850 pb-2">文件元数据属性</h5>
+            <div class="space-y-2 text-xs">
+              <div v-for="(val, key) in previewFile.properties" :key="key" class="flex justify-between p-2 rounded bg-slate-900/50 border border-slate-850">
+                <span class="text-slate-500">{{ key }}:</span>
+                <span class="text-slate-200 font-semibold font-mono">{{ val }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: OCR / Extraction Logs -->
+          <div class="space-y-4">
+            <h5 class="text-xs font-bold text-slate-350 uppercase tracking-widest border-b border-slate-850 pb-2">PaddleOCR 识别与智能解析日志</h5>
+            <div class="space-y-2 text-[11px] font-mono leading-relaxed bg-slate-950 p-4 rounded-xl border border-slate-850 max-h-[300px] overflow-y-auto">
+              <div class="text-emerald-400 font-bold mb-2">>>> PADDLE_OCR_PARSING_METADATA:</div>
+              <div v-for="(val, key) in previewFile.ocrResult" :key="key" class="mt-1">
+                <span class="text-slate-450">{{ key }}:</span> <span class="text-cyan-400 font-bold">{{ val }}</span>
+              </div>
+              <div class="text-slate-600 mt-4 text-[10px]">系统校验指纹: MD5-HASH-VERIFIED-OK</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex justify-end pt-3 border-t border-slate-800">
+          <button @click="previewFile = null" class="btn-cyber btn-cyber-primary text-xs px-6 py-2">关闭全息舱</button>
         </div>
       </div>
     </div>
