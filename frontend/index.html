@@ -431,6 +431,95 @@
               </div>
             </div>
 
+            <!-- UI-4: 项目进度跟踪（左侧列表 → 右侧抽屉展示 5 阶段时间轴） -->
+            <div class="grid gap-6" :class="selectedDashboardProject ? 'grid-cols-1 xl:grid-cols-5' : 'grid-cols-1'">
+              <!-- 左：项目列表（紧凑） -->
+              <div class="glass-panel p-6" :class="selectedDashboardProject ? 'xl:col-span-2' : ''">
+                <div class="flex items-center justify-between mb-4">
+                  <div class="flex items-center gap-2">
+                    <div class="size-2.5 rounded-full bg-purple-400 animate-pulse"></div>
+                    <h3 class="font-bold text-base text-slate-200">项目进度跟踪</h3>
+                  </div>
+                  <span class="text-xs text-slate-500">{{ selectedDashboardProject ? '已展开' : '点击项目右侧展开进度' }}</span>
+                </div>
+                <div class="space-y-2 max-h-[480px] overflow-y-auto pr-1">
+                  <div v-for="proj in projects" :key="proj.id"
+                       @click="selectedDashboardProject = selectedDashboardProject && selectedDashboardProject.id === proj.id ? null : proj"
+                       class="p-3 rounded-xl border cursor-pointer transition-all"
+                       :class="selectedDashboardProject && selectedDashboardProject.id === proj.id
+                         ? 'border-purple-500/60 bg-purple-500/10'
+                         : 'border-slate-800 hover:border-cyan-500/40 hover:bg-cyan-500/5'">
+                    <div class="flex items-center justify-between gap-3">
+                      <div class="min-w-0 flex-1">
+                        <p class="text-sm font-bold text-slate-100 truncate">{{ proj.name }}</p>
+                        <p class="text-[10px] text-slate-500 font-mono mt-0.5">{{ proj.code }} · {{ proj.client || '客户未填' }}</p>
+                      </div>
+                      <span class="text-[10px] px-2 py-0.5 rounded font-bold whitespace-nowrap"
+                            :class="proj.status === '已结项' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                              : proj.status === '已立项' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/30'
+                              : proj.status === '待审核' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
+                              : proj.status === '已驳回' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
+                              : 'bg-slate-500/10 text-slate-400 border border-slate-700'">
+                        {{ proj.status }}
+                      </span>
+                      <i class="fa-solid fa-chevron-right text-[10px] transition-transform"
+                         :class="selectedDashboardProject && selectedDashboardProject.id === proj.id ? 'rotate-90 text-purple-400' : 'text-slate-600'"></i>
+                    </div>
+                  </div>
+                  <div v-if="projects.length === 0" class="text-center text-slate-500 py-8 text-xs">
+                    <i class="fa-solid fa-folder-open text-3xl mb-2 block"></i>暂无项目
+                  </div>
+                </div>
+              </div>
+
+              <!-- 右：抽屉式进度详情（点击列表项后向右展开） -->
+              <div v-if="selectedDashboardProject" class="glass-panel p-6 xl:col-span-3 animate-fade-in border-l-4 border-l-purple-400">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-5">
+                  <div class="min-w-0">
+                    <h3 class="font-bold text-base text-slate-100 truncate">{{ selectedDashboardProject.name }}</h3>
+                    <p class="text-[10px] text-slate-500 font-mono mt-0.5">立项编码 {{ selectedDashboardProject.code }} · 合同金额 ¥{{ selectedDashboardProject.amount.toLocaleString() }}</p>
+                  </div>
+                  <button @click="selectedDashboardProject = null" class="text-slate-500 hover:text-slate-300 text-sm">
+                    <i class="fa-solid fa-xmark"></i>
+                  </button>
+                </div>
+
+                <!-- 5 阶段竖向时间轴 -->
+                <div class="space-y-0">
+                  <div v-for="(stage, idx) in projectProgressStages(selectedDashboardProject)" :key="stage.label"
+                       class="flex gap-4 relative">
+                    <!-- 节点圆 + 连接线 -->
+                    <div class="flex flex-col items-center shrink-0">
+                      <div class="size-10 rounded-full flex items-center justify-center border-2 z-10 transition-all"
+                           :class="stage.done ? 'bg-emerald-500/20 border-emerald-400 text-emerald-400'
+                             : stage.active ? 'bg-amber-500/20 border-amber-400 text-amber-400 animate-pulse'
+                             : 'bg-slate-800 border-slate-700 text-slate-600'">
+                        <i v-if="stage.done" class="fa-solid fa-check text-sm"></i>
+                        <i v-else-if="stage.active" class="fa-solid fa-spinner fa-spin text-sm"></i>
+                        <span v-else class="text-xs font-bold">{{ idx + 1 }}</span>
+                      </div>
+                      <div v-if="idx < 4" class="w-0.5 flex-1 min-h-[40px]"
+                           :class="stage.done ? 'bg-emerald-400/50' : 'bg-slate-800'"></div>
+                    </div>
+                    <!-- 节点正文 -->
+                    <div class="flex-1 pb-6 pt-1 min-w-0">
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <h4 class="font-bold text-sm"
+                            :class="stage.done ? 'text-emerald-300' : stage.active ? 'text-amber-300' : 'text-slate-400'">
+                          {{ stage.label }}
+                        </h4>
+                        <span class="text-[10px] font-mono px-2 py-0.5 rounded"
+                              :class="stage.done ? 'bg-emerald-500/10 text-emerald-400' : stage.active ? 'bg-amber-500/10 text-amber-400' : 'bg-slate-700/50 text-slate-500'">
+                          {{ stage.time }}
+                        </span>
+                      </div>
+                      <p class="text-xs text-slate-500 mt-1 truncate">{{ stage.desc }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <!-- 终端日志记录控制台 (全部汉化) -->
             <div class="glass-panel p-6">
               <div class="flex items-center justify-between mb-4">
@@ -2252,6 +2341,6 @@
   <script src="/clients/dashboard.js?v=20260609_r5"></script>
 
   <!-- 主要 Vue 运行逻辑 -->
-  <script src="app.js?v=20260609_r6"></script>
+  <script src="app.js?v=20260609_ui4"></script>
 </body>
 </html>

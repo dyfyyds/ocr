@@ -90,6 +90,31 @@ createApp({
     const selectedProjectForPanorama = ref(null);
     // UI-3: 管理员「项目财务详情(只读)」当前选中的项目（左侧列表 → 右侧抽屉详情）
     const selectedFinanceProject = ref(null);
+    // UI-4: 工作台看板项目进度右侧抽屉当前选中项目
+    const selectedDashboardProject = ref(null);
+
+    // 从项目对象派生 5 阶段进度（立项/审核/开票/汇款/结项），供 UI-4 时间轴渲染
+    const projectProgressStages = (proj) => {
+      if (!proj) return [];
+      const inv = (proj.invoices || []).length;
+      const pay = (proj.payments || []).length;
+      const isApproved = ['已立项', '已结项'].includes(proj.status);
+      const isClosed = proj.status === '已结项';
+      const isPendingAudit = proj.status === '待审核';
+      const isRejected = proj.status === '已驳回';
+      return [
+        { label: '立项登记',  done: true,        time: proj.date || '—', desc: `${proj.client || '客户未填'} · ¥${(proj.amount||0).toLocaleString()}` },
+        { label: '管理员审核', done: isApproved || isClosed, active: isPendingAudit,
+          time: isRejected ? '已驳回' : (isApproved || isClosed ? '通过' : isPendingAudit ? '待审' : '—'),
+          desc: isRejected ? (proj.rejectReason || '已驳回') : '立项合同终审' },
+        { label: '开票登记',  done: inv > 0, time: `${inv} 张`, desc: '已开票 ¥' + totalInvoiced(proj).toLocaleString() },
+        { label: '汇款到账',  done: pay > 0, time: `${pay} 笔`, desc: '已汇款 ¥' + totalPaid(proj).toLocaleString() },
+        { label: '项目结项',  done: isClosed,
+          active: proj.closeStatus === 'pending',
+          time: isClosed ? '已结项' : (proj.closeStatus === 'pending' ? '待审' : '—'),
+          desc: isClosed ? '验收报告已归档' : (proj.closeStatus === 'pending' ? '结项申请已提交' : '尚未发起结项') },
+      ];
+    };
     const selectedProjectForDetail = ref(null);
     const previousTab = ref('finance_query');
     const previewFile = ref(null);
@@ -2765,6 +2790,8 @@ createApp({
       // 全景控制舱与文件预览
       selectedProjectForPanorama,
       selectedFinanceProject,
+      selectedDashboardProject,
+      projectProgressStages,
       selectedProjectForDetail,
       previousTab,
       openProjectFinanceDetail,
