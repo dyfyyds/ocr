@@ -89,140 +89,20 @@ createApp({
         dictItems.value = JSON.parse(storedDict);
       } else {
         const initialDict = [
-          { id: 1, typeCode: 'PROJECT_TYPE', code: 'DEV', name: '软件开发', order: 1 },
-          { id: 2, typeCode: 'PROJECT_TYPE', code: 'INTEGRATION', name: '系统集成', order: 2 },
-          { id: 3, typeCode: 'PROJECT_TYPE', code: 'CONSULTING', name: '技术咨询', order: 3 },
-          { id: 4, typeCode: 'PROJECT_TYPE', code: 'MAINTENANCE', name: '运维服务', order: 4 },
-          { id: 5, typeCode: 'PAYMENT_METHOD', code: 'BANK', name: '银行转账', order: 1 },
-          { id: 6, typeCode: 'PAYMENT_METHOD', code: 'ALIPAY', name: '支付宝商户', order: 2 }
+          { id: 1, typeCode: 'project_type', code: 'DEV', name: '软件开发', order: 1 },
+          { id: 2, typeCode: 'project_type', code: 'INTEGRATION', name: '系统集成', order: 2 },
+          { id: 3, typeCode: 'project_type', code: 'CONSULTING', name: '技术咨询', order: 3 },
+          { id: 4, typeCode: 'project_type', code: 'MAINTENANCE', name: '运维服务', order: 4 },
+          { id: 5, typeCode: 'payment_method', code: 'BANK', name: '银行转账', order: 1 },
+          { id: 6, typeCode: 'payment_method', code: 'ALIPAY', name: '支付宝商户', order: 2 }
         ];
         localStorage.setItem('pm_dict', JSON.stringify(initialDict));
         dictItems.value = initialDict;
       }
 
       // 3. 项目档案改由后端 loadProjects() 加载，不再注入本地假数据。
-      //    旧的本地种子数据已停用（封存在 if(false) 死分支内，避免大段删除带来风险）。
       projects.value = [];
       localStorage.removeItem('pm_projects');
-      if (false) {
-        const initialProjects = [
-          {
-            id: 1,
-            name: '智慧园区管理系统',
-            code: 'HT-2026-001',
-            amount: 580000.00,
-            date: '2026-06-01',
-            client: '科蓝软件科技有限公司',
-            type: '软件开发',
-            pm: '王五',
-            description: '为智慧园区提供物联感知、设备集成与资产管理平台。',
-            expenses: [
-              { desc: '服务器采购', amount: 25000, date: '2026-06-05' },
-              { desc: '第三方接口授权费', amount: 8000, date: '2026-06-05' }
-            ],
-            invoices: [],
-            payments: [],
-            contractVersion: 1,
-            contractFile: '智慧园区管理系统-合同-盖章版.pdf',
-            acceptanceReport: '',
-            status: '待审核',
-            created_by: 'business',
-            rejectReason: ''
-          },
-          {
-            id: 2,
-            name: '企业级数据中台项目',
-            code: 'HT-2026-002',
-            amount: 1200000.00,
-            date: '2026-05-15',
-            client: '华盛集团股份有限公司',
-            type: '系统集成',
-            pm: '王五',
-            description: '整合企业数据孤岛，构建分析主仓与实时报表看板。',
-            expenses: [
-              { desc: '专线宽带采购', amount: 45000, date: '2026-05-20' }
-            ],
-            invoices: [
-              { id: 1, amount: 600000.00, code: 'INV-2026-001', date: '2026-05-28' }
-            ],
-            payments: [
-              { id: 1, amount: 500000.00, method: '银行转账', date: '2026-06-02' }
-            ],
-            contractVersion: 1,
-            contractFile: '企业级数据中台项目-盖章合同.pdf',
-            acceptanceReport: '',
-            status: '已立项',
-            created_by: 'business',
-            rejectReason: ''
-          },
-          {
-            id: 3,
-            name: '智能质检系统维护项目',
-            code: 'HT-2026-003',
-            amount: 240000.00,
-            date: '2026-04-10',
-            client: '万顺制造有限公司',
-            type: '运维服务',
-            pm: '王五',
-            description: '智能机器视觉模块维保与定期更新算法服务。',
-            expenses: [],
-            invoices: [
-              { id: 2, amount: 240000.00, code: 'INV-2026-002', date: '2026-04-15' }
-            ],
-            payments: [
-              { id: 2, amount: 240000.00, method: '银行转账', date: '2026-04-30' }
-            ],
-            contractVersion: 1,
-            contractFile: '智能质检系统维护项目-盖章.pdf',
-            acceptanceReport: '质检系统完工报告-盖章.pdf',
-            status: '已结项',
-            created_by: 'business',
-            rejectReason: ''
-          },
-          {
-            id: 4,
-            name: '政务云平台升级工程',
-            code: 'HT-2026-004',
-            amount: 1800000.00,
-            date: '2026-05-01',
-            client: '市大数据管理局',
-            type: '软件开发',
-            pm: '王五',
-            description: '云主机架构升级扩容，适配全栈国产系统开发。',
-            expenses: [],
-            invoices: [],
-            payments: [],
-            contractVersion: 1,
-            contractFile: '政务云合同-盖章.pdf',
-            acceptanceReport: '',
-            status: '已驳回',
-            created_by: 'business',
-            rejectReason: '提交的合同签订人印章不清晰，且与立项金额不一致。请核对后重新提交盖章合同扫描件。'
-          },
-          {
-            id: 5,
-            name: '智能排产规划咨询',
-            code: 'HT-2026-005',
-            amount: 150000.00,
-            date: '2026-06-03',
-            client: '远东重工集团',
-            type: '技术咨询',
-            pm: '李四',
-            description: '车间精益排产建模服务，提供规划方案。',
-            expenses: [],
-            invoices: [],
-            payments: [],
-            contractVersion: 1,
-            contractFile: '',
-            acceptanceReport: '',
-            status: '草稿',
-            created_by: 'business',
-            rejectReason: ''
-          }
-        ];
-        localStorage.setItem('pm_projects', JSON.stringify(initialProjects));
-        projects.value = initialProjects;
-      }
       
       // 写入初始连接日志
       addLog('数据库', '本地数据库存储引擎连接成功。项目数据状态就绪。');
