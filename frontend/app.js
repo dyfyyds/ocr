@@ -60,9 +60,10 @@ createApp({
     const tempPayment = ref({ amount: '', method: '银行转账', date: '' });
 
     // 数据字典类型定义
+    // 字典类型（登录后由 loadDict() 从后端覆盖，code 与后端一致为小写）
     const dictTypes = ref([
-      { code: 'PROJECT_TYPE', name: '项目类型' },
-      { code: 'PAYMENT_METHOD', name: '回款方式' }
+      { code: 'project_type', name: '项目类型' },
+      { code: 'payment_method', name: '回款方式' }
     ]);
 
     // ── 数据库初始化与种子数据注入 ──
@@ -99,11 +100,11 @@ createApp({
         dictItems.value = initialDict;
       }
 
-      // 3. 初始化项目档案数据
-      const storedProjects = localStorage.getItem('pm_projects');
-      if (storedProjects) {
-        projects.value = JSON.parse(storedProjects);
-      } else {
+      // 3. 项目档案改由后端 loadProjects() 加载，不再注入本地假数据。
+      //    旧的本地种子数据已停用（封存在 if(false) 死分支内，避免大段删除带来风险）。
+      projects.value = [];
+      localStorage.removeItem('pm_projects');
+      if (false) {
         const initialProjects = [
           {
             id: 1,
@@ -248,7 +249,12 @@ createApp({
         addLog('系统', `用户会话成功恢复：${currentUser.value.name} （角色：${currentUser.value.role.toUpperCase()}）`);
         // 导航至合法页
         enforceTabAccess();
-        nextTick(() => renderCharts());
+        // 会话恢复后从后端重新加载真实数据
+        if (localStorage.getItem('pm_token')) {
+          loadAllData();
+        } else {
+          nextTick(() => renderCharts());
+        }
       }
     };
 
@@ -319,7 +325,12 @@ createApp({
       loginForm.value.password = '';
       loginForm.value.error = '';
 
-      nextTick(() => renderCharts());
+      // 拉取后端真实数据（项目/用户/字典）并渲染图表
+      if (localStorage.getItem('pm_token')) {
+        await loadAllData();
+      } else {
+        nextTick(() => renderCharts());
+      }
     };
 
     // 一键演示填充并登录
@@ -355,7 +366,7 @@ createApp({
       const role = currentUser.value.role;
       if (role === 'pm' && activeTab.value !== 'pm_projects' && activeTab.value !== 'dashboard') {
         activeTab.value = 'pm_projects';
-      } else if (role === 'finance' && !['finance_ledger', 'close_audit', 'dashboard'].includes(activeTab.value)) {
+      } else if (role === 'finance' && !['finance_ledger', 'close_audit', 'finance_query', 'dashboard'].includes(activeTab.value)) {
         activeTab.value = 'finance_ledger';
       } else if (role === 'business' && !['register', 'projects', 'dashboard'].includes(activeTab.value)) {
         activeTab.value = 'projects';
@@ -407,7 +418,8 @@ createApp({
     });
 
     const pendingCloseProjects = computed(() => {
-      return projects.value.filter(p => p.status === '已立项' && p.acceptanceReport !== '');
+      // 已提交结项申请、等待财务终审的项目（close_status === pending）
+      return projects.value.filter(p => p.closeStatus === 'pending');
     });
 
     // ── 后端 API 基础地址 ──
@@ -471,6 +483,133 @@ createApp({
         );
       }
       return res.status === 204 ? null : res.json().catch(() => null);
+    };
+
+    // ── 后端数据加载层（取代 localStorage 假数据） ──
+    // 状态映射：后端英文 → 控制舱模板沿用的中文标签（保持现有视觉语言不动）
+    const STATUS_CN = {
+      draft: '草稿', pending_audit: '待审核', approved: '已立项',
+      rejected: '已驳回', closed: '已结项',
+    };
+
+    // 后端 ProjectOut → 模板沿用的项目结构
+    const mapProject = (p) => ({
+      id: p.id,
+      name: p.project_name || '未命名项目',
+      code: p.contract_no || '—',
+      amount: parseFloat(p.contract_amount || 0),
+      date: p.sign_date || '',
+      client: p.customer_name || '',
+      type: p.project_type || '软件开发',
+      pm: '—',
+      description: p.description || '',
+      status: STATUS_CN[p.status] || p.status,
+      created_by: p.created_by_name || ('用户#' + p.created_by),
+      rejectReason: p.audit_reason || '',
+      contractFile: '合同盖章扫描件.pdf',
+      // 结项：close_status 决定验收报告/复核状态
+      closeStatus: p.close_status || '',
+      acceptanceReport: p.acceptance_report
+        ? '验收报告.pdf'
+        : (p.close_status ? '结项申请已提交' : ''),
+      contractVersion: 1,
+      expenses: [],
+      invoices: [],
+      payments: [],
+    });
+
+    const mapInvoice = (inv) => ({
+      id: inv.id,
+      code: inv.invoice_no || inv.invoice_code || ('INV-' + inv.id),
+      amount: parseFloat(inv.amount || 0),
+      date: inv.invoice_date || '',
+      unit: inv.invoice_unit || '',
+      buyer: inv.buyer_name || '',
+    });
+
+    const mapPayment = (pay) => ({
+      id: pay.id,
+      method: pay.payment_method || '银行转账',
+      amount: parseFloat(pay.amount || 0),
+      date: pay.payment_date || '',
+    });
+
+    // 拉取单个项目的开票/回款明细并挂载（财务台账、结项复核、看板统计依赖）
+    const refreshProjectFinance = async (proj) => {
+      try {
+        const [invRes, payRes] = await Promise.all([
+          api(`/projects/${proj.id}/invoices`),
+          api(`/projects/${proj.id}/payments`),
+        ]);
+        proj.invoices = (invRes?.items || []).map(mapInvoice);
+        proj.payments = (payRes?.items || []).map(mapPayment);
+      } catch (e) {
+        // 明细拉取失败不阻断列表展示
+      }
+      return proj;
+    };
+
+    // 从后端加载项目列表（唯一数据源），并为已立项/已结项补充开票回款明细
+    const loadProjects = async () => {
+      try {
+        const data = await api('/projects?size=100');
+        const list = (data?.items || []).map(mapProject);
+        await Promise.all(
+          list
+            .filter((p) => ['已立项', '已结项'].includes(p.status))
+            .map((p) => refreshProjectFinance(p))
+        );
+        projects.value = list;
+      } catch (e) {
+        addLog('系统', `项目列表加载失败：${e.message}`);
+      }
+    };
+
+    // 从后端加载用户列表（管理员用户管理页）
+    const loadUsers = async () => {
+      try {
+        const data = await api('/users?size=100');
+        users.value = (data?.items || []).map((u) => ({
+          id: u.id,
+          username: u.username,
+          name: u.real_name || u.username,
+          role: u.role,
+          active: u.status === 1,
+        }));
+      } catch (e) {
+        addLog('系统', `用户列表加载失败：${e.message}`);
+      }
+    };
+
+    // 从后端加载数据字典（类型 + 字典项）
+    const loadDict = async () => {
+      try {
+        const tdata = await api('/dict/types');
+        dictTypes.value = (tdata?.items || []).map((t) => ({
+          id: t.id, code: t.type_code, name: t.type_name,
+        }));
+        const all = [];
+        for (const t of dictTypes.value) {
+          const idata = await api(`/dict/types/${t.code}/items`);
+          (idata?.items || []).forEach((it) => all.push({
+            id: it.id, typeId: t.id, typeCode: t.code,
+            code: it.item_value, name: it.item_label, order: it.sort_order,
+          }));
+        }
+        dictItems.value = all;
+      } catch (e) {
+        addLog('系统', `数据字典加载失败：${e.message}`);
+      }
+    };
+
+    // 登录后按角色加载后端数据
+    const loadAllData = async () => {
+      await loadProjects();
+      const role = currentUser.value?.role;
+      const tasks = [loadDict()];
+      if (role === 'admin') tasks.push(loadUsers());
+      await Promise.all(tasks.map((p) => p.catch(() => {})));
+      nextTick(() => renderCharts());
     };
 
     // 当前项目ID（用于上传文件）
@@ -579,7 +718,7 @@ createApp({
     };
 
     // ── PDF 盖章件上传（真实调用后端 API） ──
-    const mockUploadSealPDF = async () => {
+    const uploadSealPDF = async () => {
       const file = await pickFile('.pdf');
       if (!file) return;
 
@@ -649,7 +788,8 @@ createApp({
       // 调用后端校验接口
       try {
         const data = await api(`/projects/${currentProjectId.value}/verify`, { method: 'POST' });
-        verifyDiffs.value = data.diffs || [];
+        verifyDiffs.value = (data.diffs || []).map(d => ({ ...d, accepted: false }));
+        verifyOcrRaw.value = data.ocr_raw || {};
 
         if (verifyDiffs.value.length === 0) {
           addLog('OCR比对', '校验通过！OCR 识别结果与录入信息完全一致，无差异项。');
@@ -657,19 +797,96 @@ createApp({
           addLog('OCR比对', `检测到 ${verifyDiffs.value.length} 处差异，请人工确认。`);
         }
       } catch (err) {
-        addLog('OCR比对', `校验请求失败: ${err.message}。将使用本地数据展示。`);
+        // 不再注入任何假数据：校验失败如实报错并退回上一步，由用户重试。
+        addLog('OCR比对', `校验请求失败：${err.message}`);
         verifyDiffs.value = [];
+        verifyOcrRaw.value = {};
+        currentStep.value = 3;
+        alert('合同校验失败：' + err.message + '\n请确认已上传盖章 PDF 合同且后端服务正常后重试。');
       }
     };
 
     // 印章校验与差异比对确认
-    const verifyAccept1 = ref(true);
-    const verifyAccept2 = ref(true);
-    const verifyRemark = ref('大写金额字符转换与日期书写差异属于格式原因，正本含义实际无出入，确认确认。');
+    const verifyRemark = ref('');
     const verifyDiffs = ref([]);
+    const verifyOcrRaw = ref({});
+
+    const comparisonRows = computed(() => {
+      const fields = [
+        { key: 'contract_amount', label: '合同金额' },
+        { key: 'sign_date', label: '签订日期' },
+        { key: 'project_name', label: '项目名称' },
+        { key: 'contract_no', label: '合同编号' },
+        { key: 'customer_name', label: '客户名称' }
+      ];
+
+      return fields.map(f => {
+        const diff = verifyDiffs.value.find(d => d.field_name === f.key);
+        
+        let wordVal = '';
+        if (f.key === 'contract_amount') {
+          wordVal = formProject.value.amount !== undefined && formProject.value.amount !== null
+            ? parseFloat(formProject.value.amount).toFixed(2) + ' 元'
+            : '';
+        } else if (f.key === 'sign_date') {
+          wordVal = formProject.value.date || '';
+        } else if (f.key === 'project_name') {
+          wordVal = formProject.value.name || '';
+        } else if (f.key === 'contract_no') {
+          wordVal = formProject.value.code || '';
+        } else if (f.key === 'customer_name') {
+          wordVal = formProject.value.client || '';
+        }
+
+        let ocrVal = '';
+        if (diff) {
+          ocrVal = diff.ocr_value || '';
+        } else {
+          const rawOcr = verifyOcrRaw.value[f.key];
+          if (rawOcr !== undefined && rawOcr !== null && rawOcr !== '') {
+            ocrVal = rawOcr;
+          } else {
+            ocrVal = wordVal;
+          }
+        }
+
+        if (f.key === 'contract_amount' && ocrVal && !ocrVal.endsWith('元') && !isNaN(parseFloat(ocrVal.replace(/[,，¥￥\s]/g, '')))) {
+          ocrVal = ocrVal + ' 元';
+        }
+
+        let statusText = '一致';
+        let statusClass = 'match';
+
+        if (diff) {
+          if (diff.diff_type === 'format') {
+            statusText = '格式差异';
+            statusClass = 'format-diff';
+          } else if (diff.diff_type === 'missing') {
+            statusText = '缺失';
+            statusClass = 'mismatch';
+          } else {
+            statusText = '不匹配';
+            statusClass = 'mismatch';
+          }
+        }
+
+        return {
+          key: f.key,
+          label: f.label,
+          ocrVal,
+          wordVal,
+          statusText,
+          statusClass,
+          isDiff: !!diff,
+          diffItem: diff
+        };
+      });
+    });
 
     const startEditProject = (proj) => {
       activeEditProject.value = proj;
+      // 关联后端项目 ID，使「暂存草稿/重新提交」作用于真实记录
+      currentProjectId.value = proj.id;
       formProject.value = {
         name: proj.name,
         code: proj.code,
@@ -692,50 +909,48 @@ createApp({
       
       currentStep.value = 2; // 直接跳过上传Word，进入比对和要素确认阶段
       ocrSuccess.value = true;
-      verifyAccept1.value = false;
-      verifyAccept2.value = false;
-      
+
       activeTab.value = 'register';
       addLog('系统', `开始修改并重新发起立项，项目: ${proj.name} (${proj.code})`);
     };
 
-    const saveAsDraft = () => {
+    const saveAsDraft = async () => {
       if (!formProject.value.name) {
         alert('请至少填写项目名称，方可暂存为草稿！');
         return;
       }
-      
-      if (activeEditProject.value) {
-        const idx = projects.value.findIndex(p => p.id === activeEditProject.value.id);
-        if (idx !== -1) {
-          projects.value[idx] = {
-            ...projects.value[idx],
-            ...formProject.value,
-            status: '草稿'
-          };
-          saveProjects();
-          addLog('数据库', `项目草稿“${formProject.value.name}”修改已保存。`);
+
+      const payload = {
+        project_name: formProject.value.name,
+        contract_no: formProject.value.code || null,
+        contract_amount: formProject.value.amount || null,
+        customer_name: formProject.value.client || null,
+        project_type: formProject.value.type || null,
+        sign_date: formProject.value.date || null,
+        description: formProject.value.description || null,
+      };
+
+      try {
+        if (currentProjectId.value) {
+          // 已存在后端记录（Word 上传创建 / 编辑已驳回项目）→ 更新字段，状态保持草稿
+          await api(`/projects/${currentProjectId.value}`, { method: 'PUT', body: payload });
+        } else {
+          // 手工填写、未走 Word 上传 → 直接登记一条草稿
+          const created = await api('/projects/register', { method: 'POST', body: payload });
+          currentProjectId.value = created.id;
         }
-      } else {
-        const newProj = {
-          ...formProject.value,
-          id: Date.now(),
-          status: '草稿',
-          created_by: currentUser.value.username,
-          invoices: [],
-          payments: []
-        };
-        projects.value.push(newProj);
-        saveProjects();
-        addLog('数据库', `新项目“${newProj.name}”已成功暂存为草稿。`);
+        addLog('数据库', `项目"${formProject.value.name}"已暂存为草稿。`);
+        await loadProjects();
+        resetForm();
+        activeTab.value = 'projects';
+      } catch (err) {
+        addLog('系统', `暂存草稿失败：${err.message}`);
+        alert('暂存草稿失败：' + err.message);
       }
-      
-      resetForm();
-      activeTab.value = 'projects';
     };
 
     const submitProjectRegistration = async () => {
-      if (verifyDiffs.value.length > 0 && (!verifyAccept1.value || !verifyAccept2.value)) {
+      if (verifyDiffs.value.some(d => !d.accepted)) {
         alert('必须人工核对并勾选所有提取差异项后，方可提起立项！');
         return;
       }
@@ -762,19 +977,10 @@ createApp({
         // 提交立项申请
         await api(`/projects/${currentProjectId.value}/submit`, { method: 'POST' });
 
-        addLog('数据库', `项目”${formProject.value.name}”立项已发起，提交审核流。当前等待管理员终审。`);
+        addLog('数据库', `项目"${formProject.value.name}"立项已发起，提交审核流。当前等待管理员终审。`);
 
-        // 同步到本地列表
-        const newProj = {
-          ...formProject.value,
-          id: currentProjectId.value,
-          status: '待审核',
-          created_by: currentUser.value.username,
-          invoices: [],
-          payments: []
-        };
-        projects.value.push(newProj);
-        saveProjects();
+        // 从后端重新加载项目列表（真实状态）
+        await loadProjects();
 
         resetForm();
         activeTab.value = 'projects';
@@ -809,10 +1015,9 @@ createApp({
       ocrSuccess.value = false;
       activeEditProject.value = null;
       currentProjectId.value = null;
-      verifyAccept1.value = true;
-      verifyAccept2.value = true;
       verifyDiffs.value = [];
-      verifyRemark.value = '大写金额字符转换与日期书写差异属于格式原因，正本含义实际无出入，确认确认。';
+      verifyOcrRaw.value = {};
+      verifyRemark.value = '';
     };
 
     // 字段中文名映射
@@ -836,40 +1041,122 @@ createApp({
       adminRejectReason.value = '';
     };
 
-    const auditProject = (status) => {
-      const idx = projects.value.findIndex(p => p.id === reviewProject.value.id);
-      if (idx !== -1) {
-        if (status === '已驳回' && !adminRejectReason.value) {
-          alert('驳回时必须填写原因反馈给商务经理！');
-          return;
-        }
-        projects.value[idx].status = status;
-        projects.value[idx].rejectReason = status === '已驳回' ? adminRejectReason.value : '';
-        saveProjects();
-        addLog('数据库', `立项审核决策执行成功。项目: ${projects.value[idx].code} 决议结果: ${status}`);
+    const auditProject = async (status) => {
+      if (!reviewProject.value) return;
+      if (status === '已驳回' && !adminRejectReason.value) {
+        alert('驳回时必须填写原因反馈给商务经理！');
+        return;
+      }
+      const result = status === '已立项' ? 'approved' : 'rejected';
+      const proj = reviewProject.value;
+      try {
+        await api(`/projects/${proj.id}/audit`, {
+          method: 'POST',
+          body: { result, reason: result === 'rejected' ? adminRejectReason.value : null },
+        });
+        addLog('数据库', `立项审核决策执行成功。项目: ${proj.code} 决议结果: ${status}`);
         reviewProject.value = null;
+        adminRejectReason.value = '';
+        await loadProjects();
+        nextTick(() => renderCharts());
+      } catch (err) {
+        addLog('系统', `审核提交失败：${err.message}`);
+        alert('审核提交失败：' + err.message);
       }
     };
 
     // ── 项目经理端（PM 执行） ──
     const showAcceptanceReportModal = ref(null);
-    const mockReportFileName = ref('阶段完工验收报告_王五PM.pdf');
+    const pickedReportFile = ref(null);   // 已选择的验收报告文件
 
-    const submitClosingRequest = (proj) => {
-      const idx = projects.value.findIndex(p => p.id === proj.id);
-      if (idx !== -1) {
-        projects.value[idx].acceptanceReport = mockReportFileName.value;
-        saveProjects();
-        addLog('系统', `项目经理成功上传验收报告 [${mockReportFileName.value}] 并向财务提起结项申请。`);
+    const pickReportFile = async () => {
+      const f = await pickFile('.pdf,.docx,.jpg,.jpeg,.png');
+      if (f) {
+        pickedReportFile.value = f;
+        addLog('系统', `已选择验收报告文件：${f.name}`);
+      }
+    };
+
+    const submitClosingRequest = async (proj) => {
+      try {
+        const fd = new FormData();
+        fd.append('close_date', new Date().toISOString().split('T')[0]);
+        fd.append('close_reason', '项目已完工，提交验收结项申请');
+        if (pickedReportFile.value) fd.append('file', pickedReportFile.value);
+
+        await api(`/projects/${proj.id}/close`, { method: 'POST', body: fd, isForm: true });
+        addLog('系统', `项目经理已向财务提起结项申请${pickedReportFile.value ? '（验收报告: ' + pickedReportFile.value.name + '）' : ''}。`);
         showAcceptanceReportModal.value = null;
+        pickedReportFile.value = null;
+        await loadProjects();
+      } catch (err) {
+        addLog('系统', `结项申请提交失败：${err.message}`);
+        alert('结项申请提交失败：' + err.message);
       }
     };
 
     // ── 财务总监端（开票与回款） ──
+    const pickedInvoiceFile = ref(null);   // 待上传的发票图片/PDF
+    const invoiceScanning = ref(false);    // 发票 OCR 识别中标志
+    const pickedPaymentFile = ref(null);   // 待上传的回款凭证
+
     const triggerRecordFinance = (proj) => {
       selectedProjectForFinance.value = proj;
-      tempInvoice.value = { amount: proj.amount - totalInvoiced(proj), code: 'INV-' + Math.floor(Math.random()*90000 + 10000), date: new Date().toISOString().split('T')[0] };
-      tempPayment.value = { amount: proj.amount - totalPaid(proj), method: '银行转账', date: new Date().toISOString().split('T')[0] };
+      pickedInvoiceFile.value = null;
+      pickedPaymentFile.value = null;
+      const remainInvoice = Math.max(0, proj.amount - totalInvoiced(proj));
+      const remainPayment = Math.max(0, totalInvoiced(proj) - totalPaid(proj));
+      tempInvoice.value = {
+        amount: remainInvoice || '', code: '', date: new Date().toISOString().split('T')[0],
+        unit: proj.client || '', buyer: proj.client || '', seller: '',
+      };
+      tempPayment.value = {
+        amount: remainPayment || '', method: '银行转账', date: new Date().toISOString().split('T')[0],
+      };
+    };
+
+    // 选择发票文件 → 调用后端独立 OCR 识别并自动回填开票表单
+    const scanInvoice = async () => {
+      const f = await pickFile('.jpg,.jpeg,.png,.pdf');
+      if (!f) return;
+      pickedInvoiceFile.value = f;
+      invoiceScanning.value = true;
+      isScanning.value = true;
+      addLog('OCR扫描', `正在识别发票文件：${f.name} (${(f.size / 1024).toFixed(1)}KB)...`);
+      try {
+        const fd = new FormData();
+        fd.append('file', f);
+        const res = await api('/ocr/recognize', { method: 'POST', body: fd, isForm: true });
+        const ex = res?.extracted || {};
+        if (ex.amount) {
+          const amt = parseFloat(String(ex.amount).replace(/,/g, ''));
+          if (!isNaN(amt)) tempInvoice.value.amount = amt;
+        }
+        if (ex.invoice_no) tempInvoice.value.code = ex.invoice_no;
+        if (ex.invoice_date) tempInvoice.value.date = ex.invoice_date;
+        if (ex.buyer_name) tempInvoice.value.buyer = ex.buyer_name;
+        if (ex.seller_name) tempInvoice.value.seller = ex.seller_name;
+        const got = [
+          ex.invoice_no && '发票号码', ex.amount && '金额',
+          ex.invoice_date && '开票日期', ex.buyer_name && '购买方',
+        ].filter(Boolean);
+        addLog('OCR扫描', `发票识别完成，提取字段：${got.length ? got.join('、') : '无（请手动填写）'}。`);
+      } catch (err) {
+        addLog('系统', `发票 OCR 识别失败：${err.message}`);
+        alert('发票识别失败：' + err.message);
+      } finally {
+        invoiceScanning.value = false;
+        isScanning.value = false;
+      }
+    };
+
+    // 选择回款凭证文件
+    const pickPaymentVoucher = async () => {
+      const f = await pickFile('.jpg,.jpeg,.png,.pdf');
+      if (f) {
+        pickedPaymentFile.value = f;
+        addLog('系统', `已选择回款凭证：${f.name}`);
+      }
     };
 
     const totalInvoiced = (proj) => {
@@ -880,104 +1167,272 @@ createApp({
       return proj.payments?.reduce((sum, item) => sum + item.amount, 0) || 0;
     };
 
-    const recordInvoice = () => {
-      if (!tempInvoice.value.amount || !tempInvoice.value.code) return;
-      const idx = projects.value.findIndex(p => p.id === selectedProjectForFinance.value.id);
-      if (idx !== -1) {
-        projects.value[idx].invoices.push({
-          id: Date.now(),
-          amount: parseFloat(tempInvoice.value.amount),
-          code: tempInvoice.value.code,
-          date: tempInvoice.value.date
-        });
-        saveProjects();
-        addLog('财务记账', `成功记录发票开具。发票编号: ${tempInvoice.value.code}，金额: ¥${parseFloat(tempInvoice.value.amount).toLocaleString()}，隶属项目: ${selectedProjectForFinance.value.code}`);
-        triggerRecordFinance(projects.value[idx]); // 重新加载
+    const recordInvoice = async () => {
+      const proj = selectedProjectForFinance.value;
+      if (!proj) return;
+      if (!tempInvoice.value.amount) { alert('请填写开票金额'); return; }
+      try {
+        const fd = new FormData();
+        fd.append('amount', tempInvoice.value.amount);
+        fd.append('invoice_date', tempInvoice.value.date || new Date().toISOString().split('T')[0]);
+        if (tempInvoice.value.code) fd.append('invoice_no', tempInvoice.value.code);
+        if (tempInvoice.value.unit) fd.append('invoice_unit', tempInvoice.value.unit);
+        if (tempInvoice.value.buyer) fd.append('buyer_name', tempInvoice.value.buyer);
+        if (tempInvoice.value.seller) fd.append('seller_name', tempInvoice.value.seller);
+        if (pickedInvoiceFile.value) fd.append('file', pickedInvoiceFile.value);
+
+        await api(`/projects/${proj.id}/invoices`, { method: 'POST', body: fd, isForm: true });
+        addLog('财务记账', `开票登记成功。发票号: ${tempInvoice.value.code || '—'}，金额: ¥${parseFloat(tempInvoice.value.amount).toLocaleString()}，项目: ${proj.code}`);
+        pickedInvoiceFile.value = null;
+        await refreshProjectFinance(proj);
+        tempInvoice.value = { amount: '', code: '', date: new Date().toISOString().split('T')[0], unit: proj.client || '', buyer: proj.client || '', seller: '' };
         nextTick(() => renderCharts());
+      } catch (err) {
+        addLog('系统', `开票失败：${err.message}`);
+        alert('开票失败：' + err.message);
       }
     };
 
-    const recordPayment = () => {
-      if (!tempPayment.value.amount) return;
-      const idx = projects.value.findIndex(p => p.id === selectedProjectForFinance.value.id);
-      if (idx !== -1) {
-        projects.value[idx].payments.push({
-          id: Date.now(),
-          amount: parseFloat(tempPayment.value.amount),
-          method: tempPayment.value.method,
-          date: tempPayment.value.date
-        });
-        saveProjects();
-        addLog('财务记账', `成功登记回款到账。回款金额: ¥${parseFloat(tempPayment.value.amount).toLocaleString()}，入账方式: ${tempPayment.value.method}，隶属项目: ${selectedProjectForFinance.value.code}`);
-        triggerRecordFinance(projects.value[idx]); // 重新加载
+    const recordPayment = async () => {
+      const proj = selectedProjectForFinance.value;
+      if (!proj) return;
+      if (!tempPayment.value.amount) { alert('请填写回款金额'); return; }
+      try {
+        const fd = new FormData();
+        fd.append('amount', tempPayment.value.amount);
+        fd.append('payment_date', tempPayment.value.date || new Date().toISOString().split('T')[0]);
+        if (tempPayment.value.method) fd.append('payment_method', tempPayment.value.method);
+        if (pickedPaymentFile.value) fd.append('file', pickedPaymentFile.value);
+
+        await api(`/projects/${proj.id}/payments`, { method: 'POST', body: fd, isForm: true });
+        addLog('财务记账', `回款登记成功。金额: ¥${parseFloat(tempPayment.value.amount).toLocaleString()}，方式: ${tempPayment.value.method}，项目: ${proj.code}`);
+        pickedPaymentFile.value = null;
+        await refreshProjectFinance(proj);
+        tempPayment.value = { amount: '', method: tempPayment.value.method || '银行转账', date: new Date().toISOString().split('T')[0] };
         nextTick(() => renderCharts());
+      } catch (err) {
+        addLog('系统', `回款登记失败：${err.message}`);
+        alert('回款登记失败：' + err.message);
       }
     };
 
-    const auditProjectClosing = (proj, approve) => {
-      const idx = projects.value.findIndex(p => p.id === proj.id);
-      if (idx !== -1) {
-        if (approve) {
-          projects.value[idx].status = '已结项';
-          addLog('财务审计', `财务终审通过。项目结项决议生效，编码: ${proj.code}`);
-        } else {
-          projects.value[idx].acceptanceReport = '';
-          addLog('财务审计', `财务终审退回结项申请。项目: ${proj.code} 重置回项目执行中状态。`);
-        }
-        saveProjects();
+    const auditProjectClosing = async (proj, approve) => {
+      try {
+        await api(`/projects/${proj.id}/close/audit`, {
+          method: 'POST',
+          body: {
+            result: approve ? 'approved' : 'rejected',
+            reason: approve ? null : '财务复核退回，请核对验收材料后重新提交',
+          },
+        });
+        addLog('财务审计', approve
+          ? `财务终审通过。项目结项决议生效，编码: ${proj.code}`
+          : `财务终审退回结项申请。项目: ${proj.code} 维持执行中状态。`);
+        await loadProjects();
         nextTick(() => renderCharts());
+      } catch (err) {
+        addLog('系统', `结项审核失败：${err.message}`);
+        alert('结项审核失败：' + err.message);
       }
+    };
+
+    // ── 财务查询汇总 + 报表导出（PPT slide 35） ──
+    const queryYear = ref(new Date().getFullYear());
+    let financeBarChart = null;
+    let financePieChart = null;
+
+    // 回款方式选项（取自数据字典 PAYMENT_METHOD，缺省给常用项）
+    const paymentMethods = computed(() => {
+      const fromDict = dictItems.value
+        .filter(d => d.typeCode === 'payment_method')
+        .map(d => d.name);
+      return fromDict.length ? fromDict : ['银行转账', '支付宝商户', '现金', '支票'];
+    });
+
+    // 已立项/已结项项目的开票回款汇总行
+    const financeRows = computed(() => {
+      return projects.value
+        .filter(p => ['已立项', '已结项'].includes(p.status))
+        .map(p => {
+          const invoiced = totalInvoiced(p);
+          const paid = totalPaid(p);
+          return {
+            code: p.code, name: p.name, amount: p.amount,
+            invoiced, paid, receivable: Math.max(0, invoiced - paid),
+          };
+        });
+    });
+
+    const financeTotals = computed(() => {
+      const rows = financeRows.value;
+      return {
+        contract: rows.reduce((s, r) => s + r.amount, 0),
+        invoiced: rows.reduce((s, r) => s + r.invoiced, 0),
+        paid: rows.reduce((s, r) => s + r.paid, 0),
+        receivable: rows.reduce((s, r) => s + r.receivable, 0),
+      };
+    });
+
+    const renderFinanceCharts = () => {
+      const rows = financeRows.value;
+      const barDom = document.getElementById('financeQueryBarChart');
+      const pieDom = document.getElementById('financeQueryPieChart');
+      if (barDom) {
+        if (financeBarChart) financeBarChart.dispose();
+        financeBarChart = echarts.init(barDom, 'dark');
+        financeBarChart.setOption({
+          backgroundColor: 'transparent',
+          tooltip: { trigger: 'axis' },
+          legend: { data: ['合同额', '累计开票', '累计回款'], textStyle: { color: '#94a3b8' } },
+          grid: { left: 60, right: 20, top: 40, bottom: 80 },
+          xAxis: { type: 'category', data: rows.map(r => r.name),
+                   axisLabel: { color: '#64748b', interval: 0, rotate: 28, fontSize: 10 } },
+          yAxis: { type: 'value', axisLabel: { color: '#64748b' }, splitLine: { lineStyle: { color: '#1e293b' } } },
+          series: [
+            { name: '合同额', type: 'bar', data: rows.map(r => r.amount), itemStyle: { color: '#06b6d4' } },
+            { name: '累计开票', type: 'bar', data: rows.map(r => r.invoiced), itemStyle: { color: '#a855f7' } },
+            { name: '累计回款', type: 'bar', data: rows.map(r => r.paid), itemStyle: { color: '#10b981' } },
+          ],
+        });
+      }
+      if (pieDom) {
+        if (financePieChart) financePieChart.dispose();
+        financePieChart = echarts.init(pieDom, 'dark');
+        const t = financeTotals.value;
+        financePieChart.setOption({
+          backgroundColor: 'transparent',
+          tooltip: { trigger: 'item', formatter: '{b}: ¥{c} ({d}%)' },
+          legend: { bottom: 0, textStyle: { color: '#94a3b8' } },
+          series: [{
+            type: 'pie', radius: ['40%', '70%'], center: ['50%', '44%'],
+            data: [
+              { value: +t.paid.toFixed(2), name: '已回款', itemStyle: { color: '#10b981' } },
+              { value: +Math.max(0, t.invoiced - t.paid).toFixed(2), name: '已开票未回款', itemStyle: { color: '#f59e0b' } },
+              { value: +Math.max(0, t.contract - t.invoiced).toFixed(2), name: '未开票额度', itemStyle: { color: '#475569' } },
+            ],
+            label: { color: '#cbd5e1' },
+          }],
+        });
+      }
+    };
+
+    const exportFinanceExcel = () => {
+      if (typeof XLSX === 'undefined') { alert('Excel 导出组件未加载，请检查网络'); return; }
+      const rows = financeRows.value.map(r => ({
+        立项编号: r.code, 项目名称: r.name, 合同金额: r.amount,
+        累计开票: r.invoiced, 累计回款: r.paid, 应收余额: r.receivable,
+      }));
+      const t = financeTotals.value;
+      rows.push({ 立项编号: '合计', 项目名称: '', 合同金额: t.contract, 累计开票: t.invoiced, 累计回款: t.paid, 应收余额: t.receivable });
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '开票回款汇总');
+      XLSX.writeFile(wb, `财务开票回款汇总_${queryYear.value}.xlsx`);
+      addLog('系统', '已导出开票回款汇总 Excel 报表。');
+    };
+
+    const exportFinancePDF = () => {
+      const JsPDF = (window.jspdf || {}).jsPDF;
+      if (!JsPDF) { alert('PDF 导出组件未加载，请检查网络'); return; }
+      const doc = new JsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+      doc.setFontSize(16);
+      doc.text(`Finance Billing & Collection Report  ${queryYear.value}`, 40, 40);
+      let y = 56;
+      // ECharts 图（canvas 渲染，含中文，作为图片嵌入不受字体限制）
+      try {
+        if (financeBarChart) doc.addImage(financeBarChart.getDataURL({ pixelRatio: 2, backgroundColor: '#0f172a' }), 'PNG', 40, y, 470, 210);
+        if (financePieChart) doc.addImage(financePieChart.getDataURL({ pixelRatio: 2, backgroundColor: '#0f172a' }), 'PNG', 530, y, 270, 210);
+      } catch (e) { /* 图表未就绪则跳过 */ }
+      y += 230;
+      doc.setFontSize(10);
+      doc.text('Code           Contract        Invoiced        Paid            Receivable', 40, y);
+      y += 14;
+      const t = financeTotals.value;
+      financeRows.value.forEach(r => {
+        if (y > 540) { doc.addPage(); y = 40; }
+        doc.text(
+          `${(r.code || '').padEnd(14)} ${String(r.amount).padEnd(14)} ${String(r.invoiced).padEnd(14)} ${String(r.paid).padEnd(14)} ${r.receivable}`,
+          40, y,
+        );
+        y += 14;
+      });
+      if (y > 540) { doc.addPage(); y = 40; }
+      doc.text(`TOTAL          ${t.contract}        ${t.invoiced}        ${t.paid}        ${t.receivable}`, 40, y + 6);
+      doc.save(`Finance_Report_${queryYear.value}.pdf`);
+      addLog('系统', '已导出开票回款汇总 PDF 报表。');
     };
 
     // ── 数据字典 ──
     const newDictCode = ref('');
     const newDictName = ref('');
-    const newDictType = ref('PROJECT_TYPE');
+    const newDictType = ref('project_type');
 
-    const addDictItem = () => {
-      if (!newDictCode.value || !newDictName.value) return;
-      const newItem = {
-        id: Date.now(),
-        typeCode: newDictType.value,
-        code: newDictCode.value,
-        name: newDictName.value,
-        order: dictItems.value.filter(d => d.typeCode === newDictType.value).length + 1
-      };
-      dictItems.value.push(newItem);
-      localStorage.setItem('pm_dict', JSON.stringify(dictItems.value));
-      newDictCode.value = '';
-      newDictName.value = '';
-      addLog('系统配置', `已新增数据字典项: ${newItem.name} (${newItem.code})`);
+    const addDictItem = async () => {
+      if (!newDictCode.value || !newDictName.value) { alert('请填写唯一代号与显示名称'); return; }
+      const type = dictTypes.value.find(t => t.code === newDictType.value);
+      if (!type) { alert(`字典类型 ${newDictType.value} 不存在，请先在后端初始化该类型`); return; }
+      try {
+        await api(`/dict/types/${type.id}/items`, {
+          method: 'POST',
+          body: {
+            item_label: newDictName.value,
+            item_value: newDictCode.value,
+            sort_order: dictItems.value.filter(d => d.typeCode === newDictType.value).length + 1,
+          },
+        });
+        addLog('系统配置', `已新增数据字典项: ${newDictName.value} (${newDictCode.value})`);
+        newDictCode.value = '';
+        newDictName.value = '';
+        await loadDict();
+      } catch (err) {
+        addLog('系统', `新增字典项失败：${err.message}`);
+        alert('新增字典项失败：' + err.message);
+      }
     };
 
-    const deleteDictItem = (id) => {
-      dictItems.value = dictItems.value.filter(d => d.id !== id);
-      localStorage.setItem('pm_dict', JSON.stringify(dictItems.value));
-      addLog('系统配置', '已成功物理删除选中的数据字典条目。');
+    const deleteDictItem = async (id) => {
+      try {
+        await api(`/dict/items/${id}`, { method: 'DELETE' });
+        addLog('系统配置', '已删除选中的数据字典条目。');
+        await loadDict();
+      } catch (err) {
+        addLog('系统', `删除字典项失败：${err.message}`);
+        alert('删除字典项失败：' + err.message);
+      }
     };
 
     // ── 用户控制 ──
     const newUserForm = ref({ username: '', name: '', role: 'pm' });
-    const addUser = () => {
-      if (!newUserForm.value.username || !newUserForm.value.name) return;
-      const u = {
-        id: Date.now(),
-        username: newUserForm.value.username,
-        password: '123456', // 默认密码
-        name: newUserForm.value.name,
-        role: newUserForm.value.role,
-        active: true
-      };
-      users.value.push(u);
-      localStorage.setItem('pm_users', JSON.stringify(users.value));
-      addLog('系统配置', `新用户注册成功。姓名: ${u.name}，默认密码已设为 123456`);
-      newUserForm.value = { username: '', name: '', role: 'pm' };
+    const addUser = async () => {
+      if (!newUserForm.value.username || !newUserForm.value.name) { alert('请填写登录账号与真实姓名'); return; }
+      try {
+        await api('/users', {
+          method: 'POST',
+          body: {
+            username: newUserForm.value.username,
+            password: '123456',
+            real_name: newUserForm.value.name,
+            role: newUserForm.value.role,
+          },
+        });
+        addLog('系统配置', `新用户注册成功。姓名: ${newUserForm.value.name}，默认密码已设为 123456`);
+        newUserForm.value = { username: '', name: '', role: 'pm' };
+        await loadUsers();
+      } catch (err) {
+        addLog('系统', `新增用户失败：${err.message}`);
+        alert('新增用户失败：' + err.message);
+      }
     };
 
-    const toggleUserActive = (user) => {
-      user.active = !user.active;
-      localStorage.setItem('pm_users', JSON.stringify(users.value));
-      addLog('系统配置', `已修改用户 "${user.name}" 的系统激活状态为：${user.active ? '启用' : '挂起冻结'}`);
+    const toggleUserActive = async (user) => {
+      try {
+        const res = await api(`/users/${user.id}/status`, { method: 'PUT' });
+        user.active = res?.status === 1;
+        addLog('系统配置', `已修改用户 "${user.name}" 的系统激活状态为：${user.active ? '启用' : '挂起冻结'}`);
+      } catch (err) {
+        addLog('系统', `修改用户状态失败：${err.message}`);
+        alert('修改用户状态失败：' + err.message);
+      }
     };
 
     // ── 3D 旋转及倾斜效果监听 ──
@@ -1671,6 +2126,8 @@ createApp({
       loginForm,
       handleLogin,
       quickAutofillAndLogin,
+      login: quickAutofillAndLogin,   // 模板侧边栏「快捷切换」调用 login()
+      nextTick,                        // 模板中 nextTick(() => renderCharts())
       logout,
       enforceTabAccess,
 
@@ -1685,15 +2142,15 @@ createApp({
       startEditProject,
       simulateWordOCR,
       nextToSeal,
-      mockUploadSealPDF,
+      uploadSealPDF,
       addExpenseItem,
       removeExpenseItem,
       totalFormExpenses,
       nextToVerify,
-      verifyAccept1,
-      verifyAccept2,
       verifyRemark,
       verifyDiffs,
+      verifyOcrRaw,
+      comparisonRows,
       submitProjectRegistration,
       saveAsDraft,
       fieldLabelCN,
@@ -1712,7 +2169,8 @@ createApp({
 
       // PM 工程
       showAcceptanceReportModal,
-      mockReportFileName,
+      pickedReportFile,
+      pickReportFile,
       submitClosingRequest,
 
       // 财务台账账本
@@ -1722,9 +2180,23 @@ createApp({
       triggerRecordFinance,
       totalInvoiced,
       totalPaid,
+      scanInvoice,
+      invoiceScanning,
+      pickedInvoiceFile,
       recordInvoice,
+      pickPaymentVoucher,
+      pickedPaymentFile,
       recordPayment,
       auditProjectClosing,
+
+      // 财务查询汇总 + 导出
+      queryYear,
+      paymentMethods,
+      financeRows,
+      financeTotals,
+      renderFinanceCharts,
+      exportFinanceExcel,
+      exportFinancePDF,
 
       // 字典控制
       newDictCode,
