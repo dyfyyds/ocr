@@ -46,6 +46,8 @@ async def create_payment(
     payment_date: date = Form(...),
     payment_method: str | None = Form(None),
     invoice_id: int | None = Form(None),
+    payer_unit: str | None = Form(None),       # 汇款单位（图2 必填项）
+    bank_serial_no: str | None = Form(None),   # 银行流水号（图2）
     remark: str | None = Form(None),
     file: UploadFile = File(None),
     user: User = Depends(require_role("finance", "admin")),
@@ -76,6 +78,8 @@ async def create_payment(
         amount=amount,
         payment_date=payment_date,
         payment_method=payment_method,
+        payer_unit=payer_unit,
+        bank_serial_no=bank_serial_no,
         remark=remark,
         file_path=file_path,
         created_by=user.id,
@@ -84,3 +88,24 @@ async def create_payment(
     await db.flush()
     await db.refresh(payment)
     return PaymentOut.model_validate(payment)
+
+
+@router.delete("/{project_id}/payments/{payment_id}")
+async def delete_payment(
+    project_id: int,
+    payment_id: int,
+    user: User = Depends(require_role("finance", "admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """删除回款记录。"""
+    result = await db.execute(
+        select(Payment).where(Payment.id == payment_id, Payment.project_id == project_id)
+    )
+    payment = result.scalar_one_or_none()
+    if not payment:
+        raise NotFoundError("回款不存在")
+    
+    await db.delete(payment)
+    await db.commit()
+    return {"message": "回款已成功删除"}
+

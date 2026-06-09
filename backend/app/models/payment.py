@@ -20,6 +20,9 @@ class Payment(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=False)
     payment_date: Mapped[date] = mapped_column(Date, nullable=False)
     payment_method: Mapped[Optional[str]] = mapped_column(String(50))
+    # 匹配图2 汇款登记表单：汇款单位 / 银行流水号
+    payer_unit: Mapped[Optional[str]] = mapped_column(String(200))
+    bank_serial_no: Mapped[Optional[str]] = mapped_column(String(100))
     remark: Mapped[Optional[str]] = mapped_column(String(500))
     file_path: Mapped[Optional[str]] = mapped_column(String(500))
     created_by: Mapped[int] = mapped_column(BigInteger, nullable=False)
