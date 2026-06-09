@@ -194,32 +194,12 @@
                 <span>项目全景监控舱</span>
               </a>
               
-              <!-- 成员提交内容参考 -->
-              <div class="text-[10px] font-bold text-slate-600 tracking-wider uppercase my-2 px-4">成员提交内容参考</div>
-              <a @click="activeTab = 'register'" :class="{ 'active': activeTab === 'register' }" class="nav-item">
-                <i class="fa-solid fa-plus-minus text-cyan-400 mr-2"></i>
-                <span>智能立项登记 (商务)</span>
-              </a>
-              <a @click="activeTab = 'projects'" :class="{ 'active': activeTab === 'projects' }" class="nav-item">
-                <i class="fa-solid fa-folder-closed mr-2"></i>
-                <span>项目档案中心 (商务)</span>
-              </a>
-              <a @click="activeTab = 'pm_projects'" :class="{ 'active': activeTab === 'pm_projects' }" class="nav-item">
-                <i class="fa-solid fa-laptop-code text-amber-400 mr-2"></i>
-                <span>项目进度跟踪 (经理)</span>
-              </a>
-              <!-- UI-3: 管理员无开票/回款写权限 → 用「项目财务详情(只读)」替代旧的 发票/汇款/台账 三项 -->
+              <!-- UI-5: 移除「成员提交内容参考」段（商务/经理/财务 reference 视图冗余）；
+                   保留管理员独有的「项目财务详情(只读)」放入主导航。
+                   查询汇总报表/项目结项终审 已并入工作台看板（汇总表 + 进度抽屉）。 -->
               <a @click="activeTab = 'project_finance'; selectedFinanceProject = null" :class="{ 'active': activeTab === 'project_finance' }" class="nav-item">
                 <i class="fa-solid fa-folder-tree text-purple-400 mr-2"></i>
                 <span>项目财务详情 (只读)</span>
-              </a>
-              <a @click="activeTab = 'close_audit'" :class="{ 'active': activeTab === 'close_audit' }" class="nav-item">
-                <i class="fa-solid fa-file-invoice-dollar text-pink-400 mr-2"></i>
-                <span>项目结项终审 (财务)</span>
-              </a>
-              <a @click="activeTab = 'finance_query'; nextTick(() => renderFinanceCharts())" :class="{ 'active': activeTab === 'finance_query' }" class="nav-item">
-                <i class="fa-solid fa-chart-column text-sky-400 mr-2"></i>
-                <span>查询汇总报表 (财务)</span>
               </a>
 
               <div class="text-[10px] font-bold text-slate-600 tracking-wider uppercase my-2 px-4">系统管理配置</div>
@@ -442,17 +422,17 @@
                   </div>
                   <span class="text-xs text-slate-500">{{ selectedDashboardProject ? '已展开' : '点击项目右侧展开进度' }}</span>
                 </div>
-                <div class="space-y-2 max-h-[480px] overflow-y-auto pr-1">
+                <div class="space-y-1.5 max-h-[520px] overflow-y-auto pr-1">
                   <div v-for="proj in projects" :key="proj.id"
                        @click="selectedDashboardProject = selectedDashboardProject && selectedDashboardProject.id === proj.id ? null : proj"
-                       class="p-3 rounded-xl border cursor-pointer transition-all"
+                       class="px-3 py-2 rounded-lg border cursor-pointer transition-all"
                        :class="selectedDashboardProject && selectedDashboardProject.id === proj.id
                          ? 'border-purple-500/60 bg-purple-500/10'
                          : 'border-slate-800 hover:border-cyan-500/40 hover:bg-cyan-500/5'">
-                    <div class="flex items-center justify-between gap-3">
+                    <div class="flex items-center justify-between gap-2">
                       <div class="min-w-0 flex-1">
-                        <p class="text-sm font-bold text-slate-100 truncate">{{ proj.name }}</p>
-                        <p class="text-[10px] text-slate-500 font-mono mt-0.5">{{ proj.code }} · {{ proj.client || '客户未填' }}</p>
+                        <p class="text-xs font-bold text-slate-100 truncate">{{ proj.name }}</p>
+                        <p class="text-[10px] text-slate-500 font-mono mt-0.5 truncate">{{ proj.code }} · {{ proj.client || '客户未填' }}</p>
                       </div>
                       <span class="text-[10px] px-2 py-0.5 rounded font-bold whitespace-nowrap"
                             :class="proj.status === '已结项' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
@@ -472,51 +452,196 @@
                 </div>
               </div>
 
-              <!-- 右：抽屉式进度详情（点击列表项后向右展开） -->
-              <div v-if="selectedDashboardProject" class="glass-panel p-6 xl:col-span-3 animate-fade-in border-l-4 border-l-purple-400">
-                <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-5">
-                  <div class="min-w-0">
-                    <h3 class="font-bold text-base text-slate-100 truncate">{{ selectedDashboardProject.name }}</h3>
-                    <p class="text-[10px] text-slate-500 font-mono mt-0.5">立项编码 {{ selectedDashboardProject.code }} · 合同金额 ¥{{ selectedDashboardProject.amount.toLocaleString() }}</p>
+              <!-- 右：抽屉式项目详情（UI-6 强化：项目摘要 + 财务指标 + 时间轴 + 近期流水） -->
+              <div v-if="selectedDashboardProject" class="glass-panel p-6 xl:col-span-3 animate-fade-in border-l-4 border-l-purple-400 space-y-5">
+                <!-- 头部 -->
+                <div class="flex items-start justify-between border-b border-slate-800 pb-3">
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <h3 class="font-bold text-base text-slate-100 truncate">{{ selectedDashboardProject.name }}</h3>
+                      <span class="text-[10px] px-2 py-0.5 rounded font-bold whitespace-nowrap"
+                            :class="selectedDashboardProject.status === '已结项' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                              : selectedDashboardProject.status === '已立项' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/30'
+                              : selectedDashboardProject.status === '待审核' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
+                              : selectedDashboardProject.status === '已驳回' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
+                              : 'bg-slate-500/10 text-slate-400 border border-slate-700'">
+                        {{ selectedDashboardProject.status }}
+                      </span>
+                    </div>
+                    <p class="text-[10px] text-slate-500 font-mono mt-1">
+                      立项编码 {{ selectedDashboardProject.code }}
+                      <span class="ml-2">客户 {{ selectedDashboardProject.client || '—' }}</span>
+                      <span class="ml-2">签订 {{ selectedDashboardProject.date || '—' }}</span>
+                    </p>
                   </div>
-                  <button @click="selectedDashboardProject = null" class="text-slate-500 hover:text-slate-300 text-sm">
-                    <i class="fa-solid fa-xmark"></i>
+                  <button @click="selectedDashboardProject = null"
+                          class="size-8 rounded-lg border border-slate-800 hover:border-slate-700 hover:bg-slate-800/40 text-slate-500 hover:text-slate-300 flex items-center justify-center transition-all shrink-0 ml-3">
+                    <i class="fa-solid fa-xmark text-xs"></i>
                   </button>
                 </div>
 
-                <!-- 5 阶段竖向时间轴 -->
-                <div class="space-y-0">
-                  <div v-for="(stage, idx) in projectProgressStages(selectedDashboardProject)" :key="stage.label"
-                       class="flex gap-4 relative">
-                    <!-- 节点圆 + 连接线 -->
-                    <div class="flex flex-col items-center shrink-0">
-                      <div class="size-10 rounded-full flex items-center justify-center border-2 z-10 transition-all"
-                           :class="stage.done ? 'bg-emerald-500/20 border-emerald-400 text-emerald-400'
-                             : stage.active ? 'bg-amber-500/20 border-amber-400 text-amber-400 animate-pulse'
-                             : 'bg-slate-800 border-slate-700 text-slate-600'">
-                        <i v-if="stage.done" class="fa-solid fa-check text-sm"></i>
-                        <i v-else-if="stage.active" class="fa-solid fa-spinner fa-spin text-sm"></i>
-                        <span v-else class="text-xs font-bold">{{ idx + 1 }}</span>
+                <!-- 3 维财务指标小卡 -->
+                <div class="grid grid-cols-3 gap-3">
+                  <div class="p-3 rounded-xl bg-slate-900/40 border border-slate-800">
+                    <p class="text-[10px] text-slate-500 uppercase tracking-wider">合同金额</p>
+                    <p class="text-base font-extrabold text-slate-100 mt-0.5">¥ {{ selectedDashboardProject.amount.toLocaleString() }}</p>
+                  </div>
+                  <div class="p-3 rounded-xl bg-purple-950/20 border border-purple-500/20">
+                    <p class="text-[10px] text-purple-500 uppercase tracking-wider">已开票</p>
+                    <p class="text-base font-extrabold text-purple-400 mt-0.5">¥ {{ totalInvoiced(selectedDashboardProject).toLocaleString() }}</p>
+                  </div>
+                  <div class="p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/20">
+                    <p class="text-[10px] text-emerald-500 uppercase tracking-wider">已汇款</p>
+                    <p class="text-base font-extrabold text-emerald-400 mt-0.5">¥ {{ totalPaid(selectedDashboardProject).toLocaleString() }}</p>
+                  </div>
+                </div>
+
+                <!-- 2 列：左 5 阶段时间轴 / 右 近期流水 -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                  <!-- 5 阶段竖向时间轴（紧凑：min-h 由 40 降到 24） -->
+                  <div>
+                    <h4 class="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3">流程时间轴</h4>
+                    <div class="space-y-0">
+                      <div v-for="(stage, idx) in projectProgressStages(selectedDashboardProject)" :key="stage.label"
+                           class="flex gap-3 relative">
+                        <div class="flex flex-col items-center shrink-0">
+                          <div class="size-8 rounded-full flex items-center justify-center border-2 z-10 transition-all"
+                               :class="stage.done ? 'bg-emerald-500/20 border-emerald-400 text-emerald-400'
+                                 : stage.active ? 'bg-amber-500/20 border-amber-400 text-amber-400 animate-pulse'
+                                 : 'bg-slate-800 border-slate-700 text-slate-600'">
+                            <i v-if="stage.done" class="fa-solid fa-check text-[11px]"></i>
+                            <i v-else-if="stage.active" class="fa-solid fa-spinner fa-spin text-[11px]"></i>
+                            <span v-else class="text-[10px] font-bold">{{ idx + 1 }}</span>
+                          </div>
+                          <div v-if="idx < 4" class="w-0.5 flex-1 min-h-[24px]"
+                               :class="stage.done ? 'bg-emerald-400/50' : 'bg-slate-800'"></div>
+                        </div>
+                        <div class="flex-1 pb-4 pt-0.5 min-w-0">
+                          <div class="flex items-center gap-2 flex-wrap">
+                            <h5 class="font-bold text-xs"
+                                :class="stage.done ? 'text-emerald-300' : stage.active ? 'text-amber-300' : 'text-slate-400'">
+                              {{ stage.label }}
+                            </h5>
+                            <span class="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                                  :class="stage.done ? 'bg-emerald-500/10 text-emerald-400' : stage.active ? 'bg-amber-500/10 text-amber-400' : 'bg-slate-700/50 text-slate-500'">
+                              {{ stage.time }}
+                            </span>
+                          </div>
+                          <p class="text-[11px] text-slate-500 mt-0.5 truncate">{{ stage.desc }}</p>
+                        </div>
                       </div>
-                      <div v-if="idx < 4" class="w-0.5 flex-1 min-h-[40px]"
-                           :class="stage.done ? 'bg-emerald-400/50' : 'bg-slate-800'"></div>
                     </div>
-                    <!-- 节点正文 -->
-                    <div class="flex-1 pb-6 pt-1 min-w-0">
-                      <div class="flex items-center gap-2 flex-wrap">
-                        <h4 class="font-bold text-sm"
-                            :class="stage.done ? 'text-emerald-300' : stage.active ? 'text-amber-300' : 'text-slate-400'">
-                          {{ stage.label }}
-                        </h4>
-                        <span class="text-[10px] font-mono px-2 py-0.5 rounded"
-                              :class="stage.done ? 'bg-emerald-500/10 text-emerald-400' : stage.active ? 'bg-amber-500/10 text-amber-400' : 'bg-slate-700/50 text-slate-500'">
-                          {{ stage.time }}
-                        </span>
+                  </div>
+
+                  <!-- 近期开票 / 近期汇款（各取近 3 条） -->
+                  <div class="space-y-4">
+                    <div>
+                      <h4 class="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                        <i class="fa-solid fa-file-invoice text-purple-400"></i> 最近开票
+                        <span class="text-slate-600">({{ (selectedDashboardProject.invoices||[]).length }})</span>
+                      </h4>
+                      <div class="space-y-1.5">
+                        <div v-for="inv in (selectedDashboardProject.invoices||[]).slice(0,3)" :key="inv.id"
+                             class="flex justify-between items-center p-2 rounded-lg bg-purple-950/15 border border-purple-500/15 text-[11px]">
+                          <span class="font-mono text-purple-300 truncate">{{ inv.code }}</span>
+                          <span class="text-purple-400 font-semibold">¥ {{ inv.amount.toLocaleString() }}</span>
+                        </div>
+                        <div v-if="(selectedDashboardProject.invoices||[]).length === 0" class="text-[10px] text-slate-600 text-center py-3 border border-dashed border-slate-800 rounded-lg">尚无开票记录</div>
                       </div>
-                      <p class="text-xs text-slate-500 mt-1 truncate">{{ stage.desc }}</p>
+                    </div>
+                    <div>
+                      <h4 class="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                        <i class="fa-solid fa-money-bill-1 text-emerald-400"></i> 最近汇款
+                        <span class="text-slate-600">({{ (selectedDashboardProject.payments||[]).length }})</span>
+                      </h4>
+                      <div class="space-y-1.5">
+                        <div v-for="pay in (selectedDashboardProject.payments||[]).slice(0,3)" :key="pay.id"
+                             class="flex justify-between items-center p-2 rounded-lg bg-emerald-950/15 border border-emerald-500/15 text-[11px]">
+                          <span class="text-emerald-300 truncate">{{ pay.payer_unit || pay.method }}</span>
+                          <span class="text-emerald-400 font-semibold">¥ {{ pay.amount.toLocaleString() }}</span>
+                        </div>
+                        <div v-if="(selectedDashboardProject.payments||[]).length === 0" class="text-[10px] text-slate-600 text-center py-3 border border-dashed border-slate-800 rounded-lg">尚无汇款记录</div>
+                      </div>
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <!-- UI-5: 项目财务汇总（替代独立的「查询汇总报表」tab；并入看板） -->
+            <div class="glass-panel p-6">
+              <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+                <div class="flex items-center gap-2">
+                  <div class="size-2.5 rounded-full bg-sky-400 animate-pulse"></div>
+                  <h3 class="font-bold text-base text-slate-200">项目财务汇总</h3>
+                  <span class="text-[11px] text-slate-500 ml-1">已立项 / 已结项项目的开票回款一览</span>
+                </div>
+                <div class="flex items-center gap-2 text-xs">
+                  <label class="text-slate-500">统计年度</label>
+                  <select v-model.number="queryYear" @change="nextTick(() => renderCharts())" class="input-cyber py-1.5 text-xs bg-slate-900">
+                    <option v-for="y in yearOptions" :key="y" :value="y">{{ y }} 年</option>
+                  </select>
+                  <label class="text-slate-500 ml-1">月度</label>
+                  <select v-model.number="queryMonth" @change="nextTick(() => renderCharts())" class="input-cyber py-1.5 text-xs bg-slate-900">
+                    <option :value="0">全年</option>
+                    <option v-for="m in 12" :key="m" :value="m">{{ m }} 月</option>
+                  </select>
+                  <button @click="exportFinanceExcel" class="btn-cyber btn-cyber-primary py-1.5 text-xs px-3 ml-1">
+                    <i class="fa-solid fa-file-excel"></i> 导出 Excel
+                  </button>
+                  <button @click="exportFinancePDF" class="btn-cyber btn-cyber-secondary py-1.5 text-xs px-3">
+                    <i class="fa-solid fa-file-pdf"></i> 导出 PDF
+                  </button>
+                </div>
+              </div>
+
+              <!-- 4 维合计 -->
+              <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+                <div class="p-4 rounded-xl bg-slate-900/40 border border-slate-800">
+                  <p class="text-[10px] text-slate-500 uppercase tracking-wider">合同总额</p>
+                  <p class="text-lg font-extrabold text-slate-100 mt-1">¥ {{ financeTotals.contract.toLocaleString() }}</p>
+                </div>
+                <div class="p-4 rounded-xl bg-purple-950/20 border border-purple-500/20">
+                  <p class="text-[10px] text-purple-500 uppercase tracking-wider">期间开票</p>
+                  <p class="text-lg font-extrabold text-purple-400 mt-1">¥ {{ financeTotals.invoiced.toLocaleString() }}</p>
+                </div>
+                <div class="p-4 rounded-xl bg-emerald-950/20 border border-emerald-500/20">
+                  <p class="text-[10px] text-emerald-500 uppercase tracking-wider">期间汇款</p>
+                  <p class="text-lg font-extrabold text-emerald-400 mt-1">¥ {{ financeTotals.paid.toLocaleString() }}</p>
+                </div>
+                <div class="p-4 rounded-xl bg-amber-950/20 border border-amber-500/20">
+                  <p class="text-[10px] text-amber-500 uppercase tracking-wider">应收余款</p>
+                  <p class="text-lg font-extrabold text-amber-400 mt-1">¥ {{ financeTotals.receivable.toLocaleString() }}</p>
+                </div>
+              </div>
+
+              <!-- 项目逐行 -->
+              <div class="overflow-x-auto border border-slate-800 rounded-xl">
+                <table class="table-cyber text-xs">
+                  <thead>
+                    <tr>
+                      <th>立项编号</th>
+                      <th>项目名称</th>
+                      <th>合同金额</th>
+                      <th>期间开票</th>
+                      <th>期间汇款</th>
+                      <th>应收余款</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="r in financeRows" :key="r.code">
+                      <td class="font-mono text-cyan-400">{{ r.code }}</td>
+                      <td class="font-bold text-slate-100">{{ r.name }}</td>
+                      <td>¥ {{ r.amount.toLocaleString() }}</td>
+                      <td class="text-purple-400 font-semibold">¥ {{ r.invoiced.toLocaleString() }}</td>
+                      <td class="text-emerald-400 font-semibold">¥ {{ r.paid.toLocaleString() }}</td>
+                      <td class="text-amber-400 font-semibold">¥ {{ r.receivable.toLocaleString() }}</td>
+                    </tr>
+                    <tr v-if="financeRows.length === 0">
+                      <td colspan="6" class="text-center text-slate-500 py-8">所选期间内暂无开票/汇款流水。</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </div>
 
@@ -2341,6 +2466,6 @@
   <script src="/clients/dashboard.js?v=20260609_r5"></script>
 
   <!-- 主要 Vue 运行逻辑 -->
-  <script src="app.js?v=20260609_ui4"></script>
+  <script src="app.js?v=20260609_ui6"></script>
 </body>
 </html>
