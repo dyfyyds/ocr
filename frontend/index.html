@@ -1420,7 +1420,16 @@
 
   </div>
 
+  <!-- R4/R5 分层模块（纯助手 + HTTP 客户端 + 领域装配，与 OCR-IPMS utils/api 分层同形态） -->
+  <!-- 用 /clients/ 而非 /api/：后者已被 nginx 反代到后端，避免路径冲突。 -->
+  <script src="/utils/format.js?v=20260609_r4"></script>
+  <script src="/utils/status.js?v=20260609_r4"></script>
+  <script src="/utils/date.js?v=20260609_r4"></script>
+  <script src="/clients/http.js?v=20260609_r4"></script>
+  <script src="/clients/projects.js?v=20260609_r5"></script>
+  <script src="/clients/dashboard.js?v=20260609_r5"></script>
+
   <!-- 主要 Vue 运行逻辑 -->
-  <script src="app.js?v=20260609_r2"></script>
+  <script src="app.js?v=20260609_r6"></script>
 </body>
 </html>

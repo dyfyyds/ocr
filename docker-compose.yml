@@ -95,6 +95,11 @@ services:
       - ./frontend/app.js:/app/app.js
       - ./frontend/style.css:/app/style.css
       - ./frontend/vite.config.js:/app/vite.config.js
+      # OCR-IPMS 分层模块：utils / clients / composables（与 app.js 同级，<script> 加载）
+      # 注：用 clients/ 而非 api/ —— nginx 把 /api/* 反代到后端，会与浏览器请求冲突。
+      - ./frontend/utils:/app/utils
+      - ./frontend/clients:/app/clients
+      - ./frontend/composables:/app/composables
     depends_on:
       backend:
         condition: service_healthy

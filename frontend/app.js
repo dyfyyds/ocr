@@ -258,7 +258,8 @@ createApp({
     // ── 工作台后端聚合数据（取代客户端按已加载分页估算） ──
     // 由 loadDashboard() 调真实接口填充；失败回退客户端计算，绝不伪造。
     const dashboard = ref({ loaded: false, stats: null, trend: [], statusDist: {}, logs: [] });
-    const fmtMoney = (n) => Number(n || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    // R4: 抽到 utils/format.js（保留同名引用，避免下游 grep 失效）
+    const { fmtMoney } = window.PmFormat;
 
     // ── 全局统计指标 ──
     const stats = computed(() => {
@@ -327,12 +328,10 @@ createApp({
       return token ? { Authorization: `Bearer ${token}` } : {};
     };
 
-    // 信封解包：后端成功响应统一为 {code,message,data}；取出 data 透传给调用方，
-    // 使所有调用点（mapProject(p)、data.items…）保持与重构前一致；非信封原样返回（防御式）。
-    const unwrapEnvelope = (json) =>
-      (json && typeof json === 'object' && 'code' in json && 'data' in json) ? json.data : json;
+    // R4: 信封解包 + HTTP 客户端抽到 api/http.js（OCR-IPMS axios 拦截器同形态）。
+    // tryRefresh 仍留在本文件：依赖 localStorage 中的 refresh_token，是会话耦合的。
+    const { unwrapEnvelope, createApi } = window.PmHttp;
 
-    // 用 refresh_token 静默续期 access_token，成功返回 true
     const tryRefresh = async () => {
       const refresh = localStorage.getItem('pm_refresh_token');
       if (!refresh) return false;
@@ -352,89 +351,20 @@ createApp({
       }
     };
 
-    // ── 统一后端请求层 ──
-    // 自动注入鉴权头；遇 401 用 refresh_token 续期并重试一次；
-    // 规范化错误为 Error(message)（读取后端真实的 message 字段）。
-    const api = async (path, { method = 'GET', body, isForm = false, _retried = false } = {}) => {
-      const headers = { ...getAuthHeaders() };
-      if (body != null && !isForm) headers['Content-Type'] = 'application/json';
-      const payload = isForm ? body : (body != null ? JSON.stringify(body) : undefined);
-
-      let res;
-      try {
-        res = await fetch(`${API_BASE}${path}`, { method, headers, body: payload });
-      } catch (e) {
-        throw Object.assign(new Error('网络连接失败，请检查后端服务是否可用'), { status: 0 });
-      }
-
-      // access_token 失效：尝试续期后重试一次；失败则登出
-      if (res.status === 401 && !_retried && !path.includes('/auth/')) {
-        if (await tryRefresh()) {
-          return api(path, { method, body, isForm, _retried: true });
-        }
-        logout();
-        throw Object.assign(new Error('登录状态已过期，请重新登录'), { status: 401 });
-      }
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw Object.assign(
-          new Error(data.message || data.detail || `请求失败 (${res.status})`),
-          { status: res.status, code: data.code },
-        );
-      }
-      if (res.status === 204) return null;
-      return unwrapEnvelope(await res.json().catch(() => null));
-    };
+    // 注入运行时依赖（鉴权头 / 续期 / 401 登出）后得到 api(path, opts)
+    const api = createApi({
+      baseUrl: API_BASE,
+      getAuthHeaders,
+      tryRefresh,
+      onUnauthorized: () => logout(),
+    });
 
     // ── 后端数据加载层（取代 localStorage 假数据） ──
-    // 状态映射：后端英文 → 控制舱模板沿用的中文标签（保持现有视觉语言不动）
-    const STATUS_CN = {
-      draft: '草稿', pending_audit: '待审核', approved: '已立项',
-      rejected: '已驳回', closed: '已结项',
-    };
+    // R4: 状态映射抽到 utils/status.js，与 backend/app/models/enums.py 同步。
+    const { STATUS_CN } = window.PmStatus;
 
-    // 后端 ProjectOut → 模板沿用的项目结构
-    const mapProject = (p) => ({
-      id: p.id,
-      name: p.project_name || '未命名项目',
-      code: p.contract_no || '—',
-      amount: parseFloat(p.contract_amount || 0),
-      date: p.sign_date || '',
-      client: p.customer_name || '',
-      type: p.project_type || '软件开发',
-      pm: '—',
-      description: p.description || '',
-      status: STATUS_CN[p.status] || p.status,
-      created_by: p.created_by_name || ('用户#' + p.created_by),
-      rejectReason: p.audit_reason || '',
-      contractFile: '合同盖章扫描件.pdf',
-      // 结项：close_status 决定验收报告/复核状态
-      closeStatus: p.close_status || '',
-      acceptanceReport: p.acceptance_report
-        ? '验收报告.pdf'
-        : (p.close_status ? '结项申请已提交' : ''),
-      contractVersion: 1,
-      expenses: [],
-      invoices: [],
-      payments: [],
-    });
-
-    const mapInvoice = (inv) => ({
-      id: inv.id,
-      code: inv.invoice_no || inv.invoice_code || ('INV-' + inv.id),
-      amount: parseFloat(inv.amount || 0),
-      date: inv.invoice_date || '',
-      unit: inv.invoice_unit || '',
-      buyer: inv.buyer_name || '',
-    });
-
-    const mapPayment = (pay) => ({
-      id: pay.id,
-      method: pay.payment_method || '银行转账',
-      amount: parseFloat(pay.amount || 0),
-      date: pay.payment_date || '',
-    });
+    // R5: 项目/发票/回款映射抽到 api/projects.js（领域转换层与 UI 解耦）
+    const { mapProject, mapInvoice, mapPayment, buildProjectPayload, fetchProjectsWithFinance } = window.PmApiProjects;
 
     // 拉取单个项目的开票/回款明细并挂载（财务台账、结项复核、看板统计依赖）
     const refreshProjectFinance = async (proj) => {
@@ -451,17 +381,10 @@ createApp({
       return proj;
     };
 
-    // 从后端加载项目列表（唯一数据源），并为已立项/已结项补充开票回款明细
+    // R5: 数据装配 delegate 到 api/projects.js
     const loadProjects = async () => {
       try {
-        const data = await api('/projects?size=100');
-        const list = (data?.items || []).map(mapProject);
-        await Promise.all(
-          list
-            .filter((p) => ['已立项', '已结项'].includes(p.status))
-            .map((p) => refreshProjectFinance(p))
-        );
-        projects.value = list;
+        projects.value = await fetchProjectsWithFinance(api);
       } catch (e) {
         addLog('系统', `项目列表加载失败：${e.message}`);
       }
@@ -504,33 +427,14 @@ createApp({
       }
     };
 
-    // 工作台真实聚合：统计 / 趋势 / 状态分布 / 最近活动 四个后端接口
+    // R5: 4 路聚合 + 日志映射抽到 api/dashboard.js
     const loadDashboard = async () => {
       try {
-        const [s, t, sd, lg] = await Promise.all([
-          api('/dashboard/stats'),
-          api('/dashboard/trend'),
-          api('/dashboard/status-distribution'),
-          api('/dashboard/recent-logs?limit=30'),
-        ]);
-        const statusDist = {};
-        (sd.items || []).forEach((i) => { statusDist[i.status] = i.count; });
-        dashboard.value = {
-          loaded: true,
-          stats: s,
-          trend: t.items || [],
-          statusDist,
-          logs: lg.items || [],
-        };
+        const d = await window.PmApiDashboard.fetchDashboard(api);
+        dashboard.value = { loaded: true, ...d };
         // 面板为空时用后端真实活动日志填充（不覆盖会话实时事件）
-        if (terminalLogs.value.length === 0 && dashboard.value.logs.length) {
-          dashboard.value.logs.forEach((l) => {
-            terminalLogs.value.push({
-              time: (l.created_at || '').replace('T', ' ').slice(11, 19) || '--:--:--',
-              type: l.action || '系统',
-              text: l.detail || '',
-            });
-          });
+        if (terminalLogs.value.length === 0 && d.logs.length) {
+          d.logs.forEach((l) => terminalLogs.value.push(l));
         }
         nextTick(() => renderCharts());  // 数据到位后用真实聚合重绘图表
       } catch (e) {
@@ -857,15 +761,8 @@ createApp({
         return;
       }
 
-      const payload = {
-        project_name: formProject.value.name,
-        contract_no: formProject.value.code || null,
-        contract_amount: formProject.value.amount || null,
-        customer_name: formProject.value.client || null,
-        project_type: formProject.value.type || null,
-        sign_date: formProject.value.date || null,
-        description: formProject.value.description || null,
-      };
+      // R5: payload 装配抽到 api/projects.js（草稿态不带 verifyRemark）
+      const payload = buildProjectPayload(formProject.value);
 
       try {
         if (currentProjectId.value) {
@@ -898,19 +795,11 @@ createApp({
       }
 
       try {
-        // 更新项目信息到后端（把差异核对说明并入描述，供审核人真实查看）
-        const remarkLine = verifyRemark.value ? ('差异核对说明：' + verifyRemark.value) : '';
-        const mergedDesc = [formProject.value.description, remarkLine].filter(Boolean).join('\n') || null;
+        // R5: 立项提交把 verifyRemark 并入 description，由 buildProjectPayload 处理
+        const payload = buildProjectPayload(formProject.value, { verifyRemark: verifyRemark.value });
         await api(`/projects/${currentProjectId.value}`, {
           method: 'PUT',
-          body: {
-            project_name: formProject.value.name,
-            contract_no: formProject.value.code || null,
-            contract_amount: formProject.value.amount || null,
-            customer_name: formProject.value.client || null,
-            sign_date: formProject.value.date || null,
-            description: mergedDesc,
-          },
+          body: payload,
         }).catch(() => {});
 
         // 提交立项申请
@@ -1187,14 +1076,11 @@ createApp({
     let financePieChart = null;
 
     // 按所选年度/月度过滤的开票或回款金额合计（依据每条明细的真实日期）
-    const sumInPeriod = (arr) => (arr || []).reduce((s, x) => {
-      if (!x.date) return s;
-      const d = new Date(x.date);
-      if (isNaN(d.getTime())) return s;
-      if (d.getFullYear() !== Number(queryYear.value)) return s;
-      if (queryMonth.value && (d.getMonth() + 1) !== Number(queryMonth.value)) return s;
-      return s + parseFloat(x.amount || 0);
-    }, 0);
+    // R4: 期间过滤工厂抽到 utils/date.js（实时读取 queryYear/queryMonth ref）
+    const sumInPeriod = window.PmDate.createPeriodSummer({
+      yearRef: queryYear,
+      monthRef: queryMonth,
+    });
 
     // 回款方式选项（取自数据字典 PAYMENT_METHOD，缺省给常用项）
     const paymentMethods = computed(() => {
