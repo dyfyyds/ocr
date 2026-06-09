@@ -84,7 +84,7 @@ async def test_llm_connection(
                 "llm_model": body.llm_model,
             },
             messages=[
-                {"role": "user", "content": "请回复"连接成功"四个字。"},
+                {"role": "user", "content": "请回复连接成功四个字。"},
             ],
             max_tokens=32,
             timeout=15,
