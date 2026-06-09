@@ -8,6 +8,7 @@
         <el-menu-item index="/audit"><el-icon><Checked /></el-icon><span>立项审核</span></el-menu-item>
         <el-menu-item index="/users"><el-icon><User /></el-icon><span>用户管理</span></el-menu-item>
         <el-menu-item index="/dict"><el-icon><Collection /></el-icon><span>数据字典</span></el-menu-item>
+        <el-menu-item index="/settings"><el-icon><Setting /></el-icon><span>系统设置</span></el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>

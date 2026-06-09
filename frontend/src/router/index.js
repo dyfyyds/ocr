@@ -63,6 +63,12 @@ const routes = [
     component: () => import('../views/Dict.vue'),
     meta: { roles: ['admin'] },
   },
+  {
+    path: '/settings',
+    name: 'Settings',
+    component: () => import('../views/Settings.vue'),
+    meta: { roles: ['admin'] },
+  },
 ]
 
 const router = createRouter({

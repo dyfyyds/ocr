@@ -168,7 +168,7 @@ async def upload_word_contract(
 
     # 调用 python-docx + 正则 + LLM 综合提取
     try:
-        ocr_result = await parse_word_contract_with_llm(file_path)
+        ocr_result = await parse_word_contract_with_llm(file_path, db=db)
         extracted = ocr_result["extracted"]
 
         # 自动回填项目信息（仅当项目字段为空时）
@@ -248,7 +248,7 @@ async def upload_pdf_contract(
 
     # 调用 OCR + 正则 + LLM 综合提取
     try:
-        ocr_result = await parse_pdf_contract_with_llm(file_path)
+        ocr_result = await parse_pdf_contract_with_llm(file_path, db=db)
         contract.ocr_result = ocr_result
     except Exception as e:
         ocr_result = {"error": str(e), "source": "paddleocr"}
@@ -404,6 +404,12 @@ async def analyze_versions(
 
     if len(versions) < 2:
         raise ValidationError("至少需要 2 个有效 OCR 结果才能进行版本分析")
+
+    # 检查 LLM 开关
+    from app.utils.config_helper import get_config_value
+    llm_enabled = await get_config_value(db, "llm_enabled", "false")
+    if llm_enabled.lower() != "true":
+        raise ValidationError("LLM 提取未启用，请在系统设置中开启")
 
     # 调用 LLM 分析版本差异
     from app.core.llm_extractor import llm_extractor

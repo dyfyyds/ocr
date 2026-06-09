@@ -2,6 +2,9 @@
 #  合同解析器 - Word/PDF 文本提取 + 正则 + LLM 综合提取
 # ============================================================
 import logging
+from typing import Optional
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.nlp_extractor import extractor
 
@@ -69,21 +72,36 @@ def parse_word_contract(file_path: str) -> dict:
     }
 
 
-async def parse_word_contract_with_llm(file_path: str) -> dict:
+async def _try_llm_extract(full_text: str, db: Optional[AsyncSession] = None) -> dict:
+    """
+    尝试 LLM 提取。若 db 存在则检查 llm_enabled 开关。
+    返回 LLM 提取结果 dict，失败或关闭时返回空 dict。
+    """
+    if db is not None:
+        from app.utils.config_helper import get_config_value
+        enabled = await get_config_value(db, "llm_enabled", "false")
+        if enabled.lower() != "true":
+            logger.info("LLM 提取已关闭（llm_enabled=false），跳过")
+            return {}
+
+    try:
+        from app.core.llm_extractor import llm_extractor
+        return await llm_extractor.extract(full_text)
+    except Exception as e:
+        logger.warning(f"LLM 提取失败，降级为纯正则: {e}")
+        return {}
+
+
+async def parse_word_contract_with_llm(file_path: str, db: Optional[AsyncSession] = None) -> dict:
     """
     解析 Word 合同文件（异步，正则 + LLM 综合提取）。
+    db: 可选数据库会话，传入时检查 llm_enabled 开关。
     返回: {"raw_text": "...", "extracted": {...}, "extracted_by": {...}, "llm_extracted": {...}}
     """
     full_text = _extract_text_from_docx(file_path)
     regex_result = extractor.extract(full_text)
 
-    # 尝试 LLM 提取
-    llm_result = {}
-    try:
-        from app.core.llm_extractor import llm_extractor
-        llm_result = await llm_extractor.extract(full_text)
-    except Exception as e:
-        logger.warning(f"LLM 提取失败，降级为纯正则: {e}")
+    llm_result = await _try_llm_extract(full_text, db)
 
     merged, source_map = _merge_extracted(regex_result, llm_result)
 
@@ -119,9 +137,10 @@ def parse_pdf_contract(file_path: str) -> dict:
     }
 
 
-async def parse_pdf_contract_with_llm(file_path: str) -> dict:
+async def parse_pdf_contract_with_llm(file_path: str, db: Optional[AsyncSession] = None) -> dict:
     """
     解析 PDF 合同文件（异步，正则 + LLM 综合提取）。
+    db: 可选数据库会话，传入时检查 llm_enabled 开关。
     返回: {"raw_text": "...", "extracted": {...}, "extracted_by": {...}, "llm_extracted": {...}, "ocr_items": [...]}
     """
     from app.core.ocr_engine import ocr_from_pdf_bytes
@@ -133,13 +152,7 @@ async def parse_pdf_contract_with_llm(file_path: str) -> dict:
     full_text = "\n".join([item["text"] for item in ocr_items])
     regex_result = extractor.extract(full_text)
 
-    # 尝试 LLM 提取
-    llm_result = {}
-    try:
-        from app.core.llm_extractor import llm_extractor
-        llm_result = await llm_extractor.extract(full_text)
-    except Exception as e:
-        logger.warning(f"LLM 提取失败，降级为纯正则: {e}")
+    llm_result = await _try_llm_extract(full_text, db)
 
     merged, source_map = _merge_extracted(regex_result, llm_result)
 

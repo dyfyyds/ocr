@@ -6,13 +6,15 @@ import tempfile
 import os
 
 from fastapi import APIRouter, Depends, UploadFile, File
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_current_user
 from app.models.user import User
+from app.db.mysql import get_db
 from app.utils.file_utils import validate_file_type, validate_file_size
 from app.core.contract_parser import (
     parse_word_contract_with_llm, parse_pdf_contract_with_llm,
-    _merge_extracted, CONTRACT_FIELDS,
+    _merge_extracted, _try_llm_extract, CONTRACT_FIELDS,
 )
 from app.core.ocr_engine import ocr_from_image_bytes
 from app.core.nlp_extractor import extractor
@@ -30,10 +32,11 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff"}
 async def recognize_file(
     file: UploadFile = File(...),
     user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     独立 OCR 识别：上传文件（Word/PDF/图片），正则 + LLM 综合提取。
-    不写入数据库，不绑定项目。
+    不写入数据库，不绑定项目。受 llm_enabled 开关控制。
     """
     ext = validate_file_type(file.filename, "all")
     content = await file.read()
@@ -45,7 +48,7 @@ async def recognize_file(
                 tmp.write(content)
                 tmp_path = tmp.name
             try:
-                result = await parse_word_contract_with_llm(tmp_path)
+                result = await parse_word_contract_with_llm(tmp_path, db=db)
             finally:
                 os.unlink(tmp_path)
 
@@ -54,7 +57,7 @@ async def recognize_file(
                 tmp.write(content)
                 tmp_path = tmp.name
             try:
-                result = await parse_pdf_contract_with_llm(tmp_path)
+                result = await parse_pdf_contract_with_llm(tmp_path, db=db)
             finally:
                 os.unlink(tmp_path)
 
@@ -66,13 +69,8 @@ async def recognize_file(
             contract_extracted = extractor.extract(full_text)
             invoice_extracted = _extract_invoice_fields(full_text)
 
-            # LLM 提取
-            llm_result = {}
-            try:
-                from app.core.llm_extractor import llm_extractor
-                llm_result = await llm_extractor.extract(full_text)
-            except Exception as e:
-                logger.warning(f"图片 LLM 提取失败: {e}")
+            # LLM 提取（受 llm_enabled 开关控制）
+            llm_result = await _try_llm_extract(full_text, db)
 
             # 合并：LLM 优先，正则兜底
             merged_regex = {**invoice_extracted, **contract_extracted}
