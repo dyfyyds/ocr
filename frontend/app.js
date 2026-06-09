@@ -250,7 +250,7 @@ createApp({
         activeTab.value = 'finance_ledger';
       } else if (role === 'business' && !['register', 'projects', 'dashboard'].includes(activeTab.value)) {
         activeTab.value = 'projects';
-      } else if (role === 'admin' && !['audit', 'users', 'dict', 'dashboard'].includes(activeTab.value)) {
+      } else if (role === 'admin' && !['audit', 'users', 'dict', 'settings', 'dashboard'].includes(activeTab.value)) {
         activeTab.value = 'dashboard';
       }
     };
@@ -1350,6 +1350,80 @@ createApp({
       }
     };
 
+    // ── 系统设置 ──
+    const settingsForm = ref({ llm_enabled: 'false', llm_api_url: '', llm_api_key: '', llm_model: '' });
+    const settingsSaving = ref(false);
+    const settingsTesting = ref(false);
+    const settingsTestResult = ref(null);
+    const settingsConfigIds = {};
+
+    const loadSettings = async () => {
+      try {
+        const res = await api('/config');
+        const items = res?.items || [];
+        for (const item of items) {
+          settingsConfigIds[item.config_key] = item.id;
+          if (item.config_key in settingsForm.value) {
+            settingsForm.value[item.config_key] = item.config_value;
+          }
+        }
+      } catch (err) {
+        addLog('系统', `加载系统配置失败：${err.message}`);
+      }
+    };
+
+    const toggleLLMEnabled = async () => {
+      const newVal = settingsForm.value.llm_enabled === 'true' ? 'false' : 'true';
+      settingsForm.value.llm_enabled = newVal;
+      try {
+        const id = settingsConfigIds['llm_enabled'];
+        if (id) await api(`/config/${id}`, { method: 'PUT', body: { config_value: newVal } });
+        addLog('系统配置', `LLM 智能提取已${newVal === 'true' ? '启用' : '关闭'}`);
+      } catch (err) {
+        addLog('系统', `切换 LLM 开关失败：${err.message}`);
+      }
+    };
+
+    const saveSettings = async () => {
+      settingsSaving.value = true;
+      try {
+        const keys = ['llm_enabled', 'llm_api_url', 'llm_api_key', 'llm_model'];
+        for (const key of keys) {
+          const id = settingsConfigIds[key];
+          if (id) {
+            await api(`/config/${id}`, { method: 'PUT', body: { config_value: settingsForm.value[key] } });
+          }
+        }
+        addLog('系统配置', 'LLM 系统配置已保存生效');
+      } catch (err) {
+        addLog('系统', `保存配置失败：${err.message}`);
+      } finally {
+        settingsSaving.value = false;
+      }
+    };
+
+    const testLLMConnection = async () => {
+      settingsTesting.value = true;
+      settingsTestResult.value = null;
+      try {
+        const res = await api('/config/test-llm', {
+          method: 'POST',
+          body: {
+            llm_api_url: settingsForm.value.llm_api_url,
+            llm_api_key: settingsForm.value.llm_api_key,
+            llm_model: settingsForm.value.llm_model,
+          },
+        });
+        settingsTestResult.value = res;
+        addLog('系统配置', res.success ? 'LLM 连通性测试通过 ✓' : 'LLM 连通性测试失败 ✗');
+      } catch (err) {
+        settingsTestResult.value = { success: false, error: err.message };
+        addLog('系统', `LLM 测试失败：${err.message}`);
+      } finally {
+        settingsTesting.value = false;
+      }
+    };
+
     // ── 用户控制 ──
     const newUserForm = ref({ username: '', name: '', role: 'pm' });
     const addUser = async () => {
@@ -2155,6 +2229,16 @@ createApp({
       newDictType,
       addDictItem,
       deleteDictItem,
+
+      // 系统设置
+      settingsForm,
+      settingsSaving,
+      settingsTesting,
+      settingsTestResult,
+      loadSettings,
+      toggleLLMEnabled,
+      saveSettings,
+      testLLMConnection,
 
       // 用户管理
       newUserForm,
