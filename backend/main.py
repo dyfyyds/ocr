@@ -13,6 +13,7 @@ from app.models.user import User
 from app.utils.security import bcrypt_hash
 from app.api import auth, users, projects, invoices, payments, close, dashboard, dict_api, expenses, config_api, uploads, ocr
 from app.middleware.exception_handler import register_exception_handlers
+from app.middleware.response_envelope import ResponseEnvelopeMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,10 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# 响应信封中间件：统一成功响应为 {code,message,data}。
+# 先于 CORS 注册 → CORS 为最外层，信封重建响应后 CORS 头仍正确附加。
+app.add_middleware(ResponseEnvelopeMiddleware)
 
 # CORS 中间件（开发环境允许所有来源）
 app.add_middleware(

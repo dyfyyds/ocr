@@ -327,6 +327,11 @@ createApp({
       return token ? { Authorization: `Bearer ${token}` } : {};
     };
 
+    // 信封解包：后端成功响应统一为 {code,message,data}；取出 data 透传给调用方，
+    // 使所有调用点（mapProject(p)、data.items…）保持与重构前一致；非信封原样返回（防御式）。
+    const unwrapEnvelope = (json) =>
+      (json && typeof json === 'object' && 'code' in json && 'data' in json) ? json.data : json;
+
     // 用 refresh_token 静默续期 access_token，成功返回 true
     const tryRefresh = async () => {
       const refresh = localStorage.getItem('pm_refresh_token');
@@ -338,7 +343,7 @@ createApp({
           body: JSON.stringify({ refresh_token: refresh }),
         });
         if (!res.ok) return false;
-        const data = await res.json();
+        const data = unwrapEnvelope(await res.json());
         localStorage.setItem('pm_token', data.access_token);
         if (data.refresh_token) localStorage.setItem('pm_refresh_token', data.refresh_token);
         return true;
@@ -378,7 +383,8 @@ createApp({
           { status: res.status, code: data.code },
         );
       }
-      return res.status === 204 ? null : res.json().catch(() => null);
+      if (res.status === 204) return null;
+      return unwrapEnvelope(await res.json().catch(() => null));
     };
 
     // ── 后端数据加载层（取代 localStorage 假数据） ──
