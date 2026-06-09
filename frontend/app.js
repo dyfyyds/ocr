@@ -1424,6 +1424,11 @@ createApp({
       }
     };
 
+    // 切换到设置页时自动拉取后端最新配置
+    watch(activeTab, (tab) => {
+      if (tab === 'settings') loadSettings();
+    });
+
     // ── 用户控制 ──
     const newUserForm = ref({ username: '', name: '', role: 'pm' });
     const addUser = async () => {
