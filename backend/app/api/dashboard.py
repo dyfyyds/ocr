@@ -41,6 +41,13 @@ async def get_stats(
         select(func.count(ProjectClose.id)).where(ProjectClose.status == "pending")
     )).scalar() or 0
 
+    # 立项合同总额：仅统计已立项 / 已结项项目的合同金额（与开票口径一致）
+    contract_total = (await db.execute(
+        select(func.sum(Project.contract_amount)).where(
+            Project.status.in_(["approved", "closed"])
+        )
+    )).scalar() or 0
+
     invoice_total = (await db.execute(select(func.sum(Invoice.amount)))).scalar() or 0
     payment_total = (await db.execute(select(func.sum(Payment.amount)))).scalar() or 0
 
@@ -50,6 +57,7 @@ async def get_stats(
         closed_total=closed_total,
         pending_audit=pending_audit,
         pending_close_audit=pending_close_audit,
+        contract_total=float(contract_total),
         invoice_total=float(invoice_total),
         payment_total=float(payment_total),
         receivable=float(invoice_total) - float(payment_total),

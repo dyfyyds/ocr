@@ -375,18 +375,38 @@ createApp({
       }
     };
 
+    // ── 工作台后端聚合数据（取代客户端按已加载分页估算） ──
+    // 由 loadDashboard() 调真实接口填充；失败回退客户端计算，绝不伪造。
+    const dashboard = ref({ loaded: false, stats: null, trend: [], statusDist: {}, logs: [] });
+    const fmtMoney = (n) => Number(n || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
     // ── 全局统计指标 ──
     const stats = computed(() => {
+      // 优先后端聚合（跨全部项目/发票/回款，规模化口径准确）
+      const d = dashboard.value;
+      if (d.loaded && d.stats) {
+        const s = d.stats;
+        const contractSum = +s.contract_total || 0;
+        const invoicedSum = +s.invoice_total || 0;
+        const paymentSum = +s.payment_total || 0;
+        const receivables = Math.max(0, +s.receivable || 0);
+        return {
+          total: s.project_total || 0,
+          initiated: s.approved_total || 0,
+          pendingAudit: s.pending_audit || 0,
+          closed: s.closed_total || 0,
+          contractSum: fmtMoney(contractSum),
+          invoicedSum: fmtMoney(invoicedSum),
+          paymentSum: fmtMoney(paymentSum),
+          receivables: fmtMoney(receivables),
+          invoiceRate: contractSum > 0 ? ((invoicedSum / contractSum) * 100).toFixed(1) : '0.0',
+          collectionRate: invoicedSum > 0 ? ((paymentSum / invoicedSum) * 100).toFixed(1) : '0.0',
+        };
+      }
+
+      // 回退：后端不可用时按已加载项目估算
       const list = projects.value;
-      const total = list.length;
-      const initiated = list.filter(p => p.status === '已立项').length;
-      const pendingAudit = list.filter(p => p.status === '待审核').length;
-      const closed = list.filter(p => p.status === '已结项').length;
-
-      let contractSum = 0;
-      let invoicedSum = 0;
-      let paymentSum = 0;
-
+      let contractSum = 0, invoicedSum = 0, paymentSum = 0;
       list.forEach(p => {
         if (['已立项', '已结项'].includes(p.status)) {
           contractSum += parseFloat(p.amount || 0);
@@ -394,22 +414,18 @@ createApp({
           p.payments?.forEach(py => paymentSum += parseFloat(py.amount || 0));
         }
       });
-
       const receivables = Math.max(0, invoicedSum - paymentSum);
-      const invoiceRate = contractSum > 0 ? ((invoicedSum / contractSum) * 100).toFixed(1) : '0.0';
-      const collectionRate = invoicedSum > 0 ? ((paymentSum / invoicedSum) * 100).toFixed(1) : '0.0';
-
       return {
-        total,
-        initiated,
-        pendingAudit,
-        closed,
-        contractSum: contractSum.toLocaleString('zh-CN', { minimumFractionDigits: 2 }),
-        invoicedSum: invoicedSum.toLocaleString('zh-CN', { minimumFractionDigits: 2 }),
-        paymentSum: paymentSum.toLocaleString('zh-CN', { minimumFractionDigits: 2 }),
-        receivables: receivables.toLocaleString('zh-CN', { minimumFractionDigits: 2 }),
-        invoiceRate,
-        collectionRate
+        total: list.length,
+        initiated: list.filter(p => p.status === '已立项').length,
+        pendingAudit: list.filter(p => p.status === '待审核').length,
+        closed: list.filter(p => p.status === '已结项').length,
+        contractSum: fmtMoney(contractSum),
+        invoicedSum: fmtMoney(invoicedSum),
+        paymentSum: fmtMoney(paymentSum),
+        receivables: fmtMoney(receivables),
+        invoiceRate: contractSum > 0 ? ((invoicedSum / contractSum) * 100).toFixed(1) : '0.0',
+        collectionRate: invoicedSum > 0 ? ((paymentSum / invoicedSum) * 100).toFixed(1) : '0.0',
       };
     });
 
@@ -602,11 +618,46 @@ createApp({
       }
     };
 
+    // 工作台真实聚合：统计 / 趋势 / 状态分布 / 最近活动 四个后端接口
+    const loadDashboard = async () => {
+      try {
+        const [s, t, sd, lg] = await Promise.all([
+          api('/dashboard/stats'),
+          api('/dashboard/trend'),
+          api('/dashboard/status-distribution'),
+          api('/dashboard/recent-logs?limit=30'),
+        ]);
+        const statusDist = {};
+        (sd.items || []).forEach((i) => { statusDist[i.status] = i.count; });
+        dashboard.value = {
+          loaded: true,
+          stats: s,
+          trend: t.items || [],
+          statusDist,
+          logs: lg.items || [],
+        };
+        // 面板为空时用后端真实活动日志填充（不覆盖会话实时事件）
+        if (terminalLogs.value.length === 0 && dashboard.value.logs.length) {
+          dashboard.value.logs.forEach((l) => {
+            terminalLogs.value.push({
+              time: (l.created_at || '').replace('T', ' ').slice(11, 19) || '--:--:--',
+              type: l.action || '系统',
+              text: l.detail || '',
+            });
+          });
+        }
+        nextTick(() => renderCharts());  // 数据到位后用真实聚合重绘图表
+      } catch (e) {
+        dashboard.value = { ...dashboard.value, loaded: false };
+        addLog('系统', `工作台统计加载失败（回退本地估算）：${e.message}`);
+      }
+    };
+
     // 登录后按角色加载后端数据
     const loadAllData = async () => {
       await loadProjects();
       const role = currentUser.value?.role;
-      const tasks = [loadDict()];
+      const tasks = [loadDict(), loadDashboard()];
       if (role === 'admin') tasks.push(loadUsers());
       await Promise.all(tasks.map((p) => p.catch(() => {})));
       nextTick(() => renderCharts());
@@ -1469,39 +1520,37 @@ createApp({
         if (chartInstanceTrend) chartInstanceTrend.dispose();
         chartInstanceTrend = echarts.init(trendDom, 'dark');
 
-        // 动态计算近 6 个月开票/回款金额走势
+        // 近 6 个月开票/回款走势：优先后端 /dashboard/trend，回退客户端
         const months = [];
         const invoiceData = [];
         const paymentData = [];
-        
-        const now = new Date();
-        for (let i = 5; i >= 0; i--) {
-          const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-          const monthStr = (d.getMonth() + 1) + '月';
-          months.push(monthStr);
-          
-          let monthInvoiceSum = 0;
-          let monthPaymentSum = 0;
-          
-          projects.value.forEach(p => {
-            if (['已立项', '已结项'].includes(p.status)) {
-              p.invoices?.forEach(inv => {
-                const invDate = new Date(inv.date);
-                if (invDate.getFullYear() === d.getFullYear() && invDate.getMonth() === d.getMonth()) {
-                  monthInvoiceSum += parseFloat(inv.amount || 0);
-                }
-              });
-              p.payments?.forEach(pay => {
-                const payDate = new Date(pay.date);
-                if (payDate.getFullYear() === d.getFullYear() && payDate.getMonth() === d.getMonth()) {
-                  monthPaymentSum += parseFloat(pay.amount || 0);
-                }
-              });
-            }
+        const bt = dashboard.value.loaded ? dashboard.value.trend : null;
+        if (bt && bt.length) {
+          bt.forEach(it => {
+            months.push((parseInt((it.month || '').split('-')[1], 10) || '') + '月');
+            invoiceData.push(+it.invoice_amount || 0);
+            paymentData.push(+it.payment_amount || 0);
           });
-          
-          invoiceData.push(monthInvoiceSum);
-          paymentData.push(monthPaymentSum);
+        } else {
+          const now = new Date();
+          for (let i = 5; i >= 0; i--) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            months.push((d.getMonth() + 1) + '月');
+            let mi = 0, mp = 0;
+            projects.value.forEach(p => {
+              if (['已立项', '已结项'].includes(p.status)) {
+                p.invoices?.forEach(inv => {
+                  const dt = new Date(inv.date);
+                  if (dt.getFullYear() === d.getFullYear() && dt.getMonth() === d.getMonth()) mi += parseFloat(inv.amount || 0);
+                });
+                p.payments?.forEach(pay => {
+                  const dt = new Date(pay.date);
+                  if (dt.getFullYear() === d.getFullYear() && dt.getMonth() === d.getMonth()) mp += parseFloat(pay.amount || 0);
+                });
+              }
+            });
+            invoiceData.push(mi); paymentData.push(mp);
+          }
         }
 
         const option = {
@@ -1624,10 +1673,11 @@ createApp({
         if (chartInstanceStatus) chartInstanceStatus.dispose();
         chartInstanceStatus = echarts.init(statusDom, 'dark');
 
-        const draft = projects.value.filter(p => p.status === '草稿').length;
-        const pending = projects.value.filter(p => p.status === '待审核').length;
-        const approved = projects.value.filter(p => p.status === '已立项').length;
-        const closed = projects.value.filter(p => p.status === '已结项').length;
+        const sdb = dashboard.value.loaded ? dashboard.value.statusDist : null;
+        const draft    = sdb ? (sdb.draft || 0)         : projects.value.filter(p => p.status === '草稿').length;
+        const pending  = sdb ? (sdb.pending_audit || 0) : projects.value.filter(p => p.status === '待审核').length;
+        const approved = sdb ? (sdb.approved || 0)      : projects.value.filter(p => p.status === '已立项').length;
+        const closed   = sdb ? (sdb.closed || 0)        : projects.value.filter(p => p.status === '已结项').length;
         const total = draft + pending + approved + closed;
 
         const option = {
@@ -2141,6 +2191,7 @@ createApp({
       activeEditProject,
       startEditProject,
       simulateWordOCR,
+      loadDashboard,
       nextToSeal,
       uploadSealPDF,
       addExpenseItem,

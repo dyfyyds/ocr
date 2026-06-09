@@ -175,7 +175,7 @@
             <div class="text-[11px] font-bold text-slate-500 tracking-widest uppercase mb-4 px-4">系统导航菜单</div>
             
             <!-- 工作台通用选项 -->
-            <a @click="activeTab = 'dashboard'; nextTick(() => renderCharts())" :class="{ 'active': activeTab === 'dashboard' }" class="nav-item">
+            <a @click="activeTab = 'dashboard'; loadDashboard(); nextTick(() => renderCharts())" :class="{ 'active': activeTab === 'dashboard' }" class="nav-item">
               <i class="fa-solid fa-chart-pie mr-2"></i>
               <span>数据大屏看板</span>
             </a>
