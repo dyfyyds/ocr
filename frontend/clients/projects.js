@@ -37,9 +37,15 @@
     id: inv.id,
     code: inv.invoice_no || inv.invoice_code || 'INV-' + inv.id,
     amount: parseFloat(inv.amount || 0),
+    tax_rate: inv.tax_rate !== undefined && inv.tax_rate !== null ? parseFloat(inv.tax_rate) : null,
+    tax_amount: inv.tax_amount !== undefined && inv.tax_amount !== null ? parseFloat(inv.tax_amount) : null,
+    invoice_type: inv.invoice_type || '',       // UI-2 发票类型
     date: inv.invoice_date || '',
     unit: inv.invoice_unit || '',
     buyer: inv.buyer_name || '',
+    remark: inv.remark || '',                   // UI-2 备注
+    file_path: inv.file_path || null,
+    file_url: inv.file_path ? '/api/uploads/' + inv.file_path : null,
   });
 
   const mapPayment = (pay) => ({
@@ -47,6 +53,10 @@
     method: pay.payment_method || '银行转账',
     amount: parseFloat(pay.amount || 0),
     date: pay.payment_date || '',
+    payer_unit: pay.payer_unit || '',           // UI-1/UI-3 汇款单位
+    bank_serial_no: pay.bank_serial_no || '',   // UI-1/UI-3 银行流水号
+    remark: pay.remark || '',
+    file_path: pay.file_path || null,
   });
 
   // 注册项目 payload 构造（PUT/POST 共用）；description 把 verifyRemark 并入

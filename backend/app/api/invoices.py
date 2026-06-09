@@ -51,7 +51,7 @@ async def create_invoice(
     seller_name: str = Form(None),
     remark: str | None = Form(None),          # 图1 备注
     file: UploadFile = File(None),
-    user: User = Depends(require_role("finance", "admin")),
+    user: User = Depends(require_role("finance")),
     db: AsyncSession = Depends(get_db),
 ):
     """开票登记，上传发票图片自动 OCR 识别。"""
@@ -121,7 +121,7 @@ async def create_invoice(
 async def delete_invoice(
     project_id: int,
     invoice_id: int,
-    user: User = Depends(require_role("finance", "admin")),
+    user: User = Depends(require_role("finance")),
     db: AsyncSession = Depends(get_db),
 ):
     """删除开票记录。"""

@@ -50,7 +50,7 @@ async def create_payment(
     bank_serial_no: str | None = Form(None),   # 银行流水号（图2）
     remark: str | None = Form(None),
     file: UploadFile = File(None),
-    user: User = Depends(require_role("finance", "admin")),
+    user: User = Depends(require_role("finance")),
     db: AsyncSession = Depends(get_db),
 ):
     """回款登记，可选上传回款凭证（图片/PDF）。
@@ -94,7 +94,7 @@ async def create_payment(
 async def delete_payment(
     project_id: int,
     payment_id: int,
-    user: User = Depends(require_role("finance", "admin")),
+    user: User = Depends(require_role("finance")),
     db: AsyncSession = Depends(get_db),
 ):
     """删除回款记录。"""

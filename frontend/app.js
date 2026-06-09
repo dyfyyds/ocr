@@ -88,6 +88,8 @@ createApp({
 
     // 全景控制舱与文件预览
     const selectedProjectForPanorama = ref(null);
+    // UI-3: 管理员「项目财务详情(只读)」当前选中的项目（左侧列表 → 右侧抽屉详情）
+    const selectedFinanceProject = ref(null);
     const selectedProjectForDetail = ref(null);
     const previousTab = ref('finance_query');
     const previewFile = ref(null);
@@ -2762,6 +2764,7 @@ createApp({
 
       // 全景控制舱与文件预览
       selectedProjectForPanorama,
+      selectedFinanceProject,
       selectedProjectForDetail,
       previousTab,
       openProjectFinanceDetail,
