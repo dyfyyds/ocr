@@ -19,6 +19,7 @@ from app.utils.file_utils import (
     validate_file_type, validate_file_size, generate_safe_filename, get_upload_path,
 )
 from app.exceptions import NotFoundError, ValidationError
+from app.services.finance import ensure_payment_allowed
 
 router = APIRouter()
 
@@ -55,21 +56,8 @@ async def create_payment(
     改为 multipart/form-data 以支持 PPT 要求的「回款上传凭证」，
     凭证落地后写入 payments.file_path（该列模型已存在）。
     """
-    if amount <= 0:
-        raise ValidationError("回款金额必须大于 0")
-
-    result = await db.execute(select(Project).where(Project.id == project_id))
-    project = result.scalar_one_or_none()
-    if not project:
-        raise NotFoundError("项目不存在")
-    if project.status != "approved":
-        raise ValidationError("只有已立项的项目可以登记回款")
-
-    # 验证发票存在
-    if invoice_id:
-        inv = (await db.execute(select(Invoice).where(Invoice.id == invoice_id))).scalar_one_or_none()
-        if not inv:
-            raise NotFoundError("关联的发票不存在")
+    # 回款前置校验（服务层）：金额>0、项目已立项、（可选）关联发票存在
+    await ensure_payment_allowed(db, project_id, amount, invoice_id)
 
     # 可选回款凭证落地
     file_path = None

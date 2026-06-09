@@ -18,6 +18,7 @@ from app.schemas.projects import (
 )
 from app.dependencies import get_current_user, require_admin, require_role
 from app.models.user import User
+from app.services.approval import submit_for_approval, audit_project as approval_audit
 from app.utils.pagination import paginate, PageResponse
 from app.utils.file_utils import validate_file_type, validate_file_size, generate_safe_filename, get_upload_path
 from app.exceptions import NotFoundError, ValidationError
@@ -428,27 +429,7 @@ async def submit_project(
     db: AsyncSession = Depends(get_db),
 ):
     """提交立项申请。"""
-    from app.models.activity_log import ActivityLog
-
-    result = await db.execute(select(Project).where(Project.id == project_id))
-    project = result.scalar_one_or_none()
-    if not project:
-        raise NotFoundError("项目不存在")
-    # 草稿或已驳回的项目都可提交立项（支持驳回后修改再提交）
-    if project.status not in ("draft", "rejected"):
-        raise ValidationError("只有草稿或已驳回的项目可以提交立项")
-
-    project.status = "pending_audit"
-    # 重新提交时清除上一次的审核意见
-    project.audit_reason = None
-
-    db.add(ActivityLog(
-        action="project_submit",
-        detail=f"项目「{project.project_name}」提交立项申请",
-        user_id=user.id,
-        project_id=project_id,
-    ))
-
+    project = await submit_for_approval(db, project_id, user)
     await db.flush()
     return {"message": "提交成功", "status": project.status}
 
@@ -461,40 +442,7 @@ async def audit_project(
     db: AsyncSession = Depends(get_db),
 ):
     """审核立项。"""
-    from datetime import datetime, timezone
-    from app.models.audit_log import AuditLog
-    from app.models.activity_log import ActivityLog
-
-    result = await db.execute(select(Project).where(Project.id == project_id))
-    project = result.scalar_one_or_none()
-    if not project:
-        raise NotFoundError("项目不存在")
-    if project.status != "pending_audit":
-        raise ValidationError("项目不在待审核状态")
-
-    project.status = body.result
-    project.audit_by = admin.id
-    project.audit_time = datetime.now(timezone.utc)
-    project.audit_reason = body.reason
-
-    # 写入审核日志
-    db.add(AuditLog(
-        project_id=project_id,
-        action="project_audit",
-        result=body.result,
-        reason=body.reason,
-        reviewer_id=admin.id,
-    ))
-
-    # 写入活动日志
-    action_label = "审核通过" if body.result == "approved" else "审核驳回"
-    db.add(ActivityLog(
-        action=f"audit_{body.result}",
-        detail=f"项目「{project.project_name}」{action_label}",
-        user_id=admin.id,
-        project_id=project_id,
-    ))
-
+    project = await approval_audit(db, project_id, body.result, body.reason, admin)
     await db.flush()
     return {"message": f"审核完成: {body.result}", "status": project.status}
 

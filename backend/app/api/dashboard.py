@@ -14,6 +14,10 @@ from app.models.activity_log import ActivityLog
 from app.schemas.dashboard import StatsOut, StatusDist
 from app.dependencies import get_current_user
 from app.models.user import User
+from app.services.finance import calc_receivable
+from app.models.enums import (
+    PROJECT_APPROVED, PROJECT_CLOSED, PROJECT_PENDING_AUDIT, CLOSE_PENDING,
+)
 
 router = APIRouter()
 
@@ -26,30 +30,28 @@ async def get_stats(
     """工作台概览统计。"""
     project_total = (await db.execute(select(func.count(Project.id)))).scalar() or 0
     approved_total = (await db.execute(
-        select(func.count(Project.id)).where(Project.status == "approved")
+        select(func.count(Project.id)).where(Project.status == PROJECT_APPROVED)
     )).scalar() or 0
     closed_total = (await db.execute(
-        select(func.count(Project.id)).where(Project.status == "closed")
+        select(func.count(Project.id)).where(Project.status == PROJECT_CLOSED)
     )).scalar() or 0
     pending_audit = (await db.execute(
-        select(func.count(Project.id)).where(Project.status == "pending_audit")
+        select(func.count(Project.id)).where(Project.status == PROJECT_PENDING_AUDIT)
     )).scalar() or 0
 
-    # 待结项审核数
-    from sqlalchemy import and_
     pending_close_audit = (await db.execute(
-        select(func.count(ProjectClose.id)).where(ProjectClose.status == "pending")
+        select(func.count(ProjectClose.id)).where(ProjectClose.status == CLOSE_PENDING)
     )).scalar() or 0
 
     # 立项合同总额：仅统计已立项 / 已结项项目的合同金额（与开票口径一致）
     contract_total = (await db.execute(
         select(func.sum(Project.contract_amount)).where(
-            Project.status.in_(["approved", "closed"])
+            Project.status.in_([PROJECT_APPROVED, PROJECT_CLOSED])
         )
     )).scalar() or 0
 
-    invoice_total = (await db.execute(select(func.sum(Invoice.amount)))).scalar() or 0
-    payment_total = (await db.execute(select(func.sum(Payment.amount)))).scalar() or 0
+    # 开票/回款/应收聚合（服务层，与财务台账同源口径）
+    fin = await calc_receivable(db)
 
     return StatsOut(
         project_total=project_total,
@@ -58,9 +60,9 @@ async def get_stats(
         pending_audit=pending_audit,
         pending_close_audit=pending_close_audit,
         contract_total=float(contract_total),
-        invoice_total=float(invoice_total),
-        payment_total=float(payment_total),
-        receivable=float(invoice_total) - float(payment_total),
+        invoice_total=fin["invoiced"],
+        payment_total=fin["paid"],
+        receivable=fin["receivable"],
     )
 
 

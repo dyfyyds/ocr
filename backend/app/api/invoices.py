@@ -16,6 +16,7 @@ from app.models.user import User
 from app.utils.file_utils import validate_file_type, validate_file_size, generate_safe_filename, get_upload_path
 from app.exceptions import NotFoundError, ValidationError
 from app.core.contract_parser import parse_invoice_image
+from app.services.finance import ensure_invoiceable
 
 router = APIRouter()
 
@@ -50,13 +51,8 @@ async def create_invoice(
     db: AsyncSession = Depends(get_db),
 ):
     """开票登记，上传发票图片自动 OCR 识别。"""
-    # 校验项目存在且已立项
-    result = await db.execute(select(Project).where(Project.id == project_id))
-    project = result.scalar_one_or_none()
-    if not project:
-        raise NotFoundError("项目不存在")
-    if project.status != "approved":
-        raise ValidationError("只有已立项的项目可以开票")
+    # 开票前置校验（服务层）：项目存在且已立项
+    await ensure_invoiceable(db, project_id)
 
     file_path = None
     ocr_result = None
