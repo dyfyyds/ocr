@@ -243,15 +243,32 @@ def _extract_invoice_fields(text: str) -> dict:
     if m:
         fields["invoice_date"] = f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
 
-    # 购买方
-    m = re.search(r"购买方[：:]\s*(.+?)(?:\n|$)", text)
-    if m:
-        fields["buyer_name"] = m.group(1).strip()
+    # 购买方 / 销售方
+    # 增值税专用发票为左右双栏：「名」「称：XXX」分行，购买方在上、销售方在下。
+    # 先抓所有独立成行的「称：XXX」（行首 称，排除「项目名称：」这类行内出现），
+    # 顺序即 [购买方, 销售方]；再用内联「购买方：/销售方：」兜底。
+    def _clean_org(s: str) -> str:
+        s = re.sub(r"[（(][^）)]*[）)]", "", s).strip()  # 去掉（章）（盖章）等括注
+        return s.rstrip("，。；、 ")
 
-    # 销售方
-    m = re.search(r"销售方[：:]\s*(.+?)(?:\n|$)", text)
-    if m:
-        fields["seller_name"] = m.group(1).strip()
+    name_lines = [_clean_org(n) for n in re.findall(r"(?:^|\n)\s*称[：:]\s*([^\n]+)", text)]
+    name_lines = [n for n in name_lines if len(n) >= 4 and "银行" not in n and "账号" not in n]
+    if name_lines:
+        fields["buyer_name"] = name_lines[0]
+        if len(name_lines) >= 2:
+            fields["seller_name"] = name_lines[1]
+
+    if "buyer_name" not in fields:
+        m = re.search(r"购买方[^\n]{0,6}?[：:]\s*(.+?)(?:\n|$)", text)
+        if m and _clean_org(m.group(1)):
+            fields["buyer_name"] = _clean_org(m.group(1))
+    # 销售方内联兜底：跳过「销售方：（章）」这类只剩括注的行
+    if "seller_name" not in fields:
+        for m in re.finditer(r"销售方[^\n]{0,6}?[：:]\s*(.+?)(?:\n|$)", text):
+            v = _clean_org(m.group(1))
+            if len(v) >= 4:
+                fields["seller_name"] = v
+                break
 
     # 税率
     m = re.search(r"税率[：:]\s*(\d+)%", text)
@@ -317,20 +334,29 @@ def _extract_payment_fields(text: str) -> dict:
         fields["payment_date"] = f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
 
     # 汇款单位（付款方/汇款人/付款单位/对方户名）
+    # 角色词后可能有括注「付款方（甲方）：」，需允许 0~1 段 (...) 再到冒号。
+    _clean = lambda s: re.sub(r"[（(][^）)]*[）)]", "", s).strip().rstrip("，。；、 ")
+    PAREN = r"(?:[（(][^）)]*[）)])?"
     for pat in (
-        r"(?:付款人户名|对方户名|付款单位|汇款单位|付款方|汇款人)[：:]\s*(.+?)(?:\n|$)",
+        rf"(?:付款人户名|对方户名|付款单位|汇款单位|付款方|汇款人){PAREN}[：:]\s*(.+?)(?:\n|$)",
         r"户\s*名[：:]\s*(.+?)(?:\n|$)",
     ):
-        m = re.search(pat, text)
-        if m:
-            name = re.sub(r"[（(].*?[）)]$", "", m.group(1).strip()).strip()
-            if len(name) > 1:
+        for m in re.finditer(pat, text):
+            name = _clean(m.group(1))
+            if len(name) >= 3:
                 fields["payer_unit"] = name
                 break
+        if fields.get("payer_unit"):
+            break
+    # 兜底：「付款方（甲方）」单独成行、单位名在下一行的版式
+    if not fields.get("payer_unit"):
+        m = re.search(r"付款方" + PAREN + r"\s*\n\s*(.+?)(?:\n|$)", text)
+        if m and len(_clean(m.group(1))) >= 3:
+            fields["payer_unit"] = _clean(m.group(1))
 
-    # 银行流水号 / 凭证号 / 交易流水号
+    # 银行流水号 / 凭证编号 / 交易流水号（值可能含连字符，如 HK-2026-00320）
     for pat in (
-        r"(?:银行流水号|流水号|交易流水号|凭证号|业务参考号|回单编号)[：:]\s*([A-Za-z0-9]+)",
+        r"(?:银行流水号|流水号|交易流水号|凭证编号|凭证号|业务参考号|回单编号)[：:]\s*([A-Za-z0-9\-]+)",
         r"\b(BK\d{6,})\b",
     ):
         m = re.search(pat, text)
