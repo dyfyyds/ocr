@@ -1718,14 +1718,15 @@
           </div>
 
           <!-- ── 模块 7c: 项目全景监控舱 (ADMIN PANORAMA) ── -->
-          <div v-if="activeTab === 'admin_panorama'" class="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
+          <!-- UI-16: 分栏布局 —— 固定行高，左侧项目列表与右侧详情各自独立滚动 -->
+          <div v-if="activeTab === 'admin_panorama'" class="grid grid-cols-1 lg:grid-cols-4 gap-6 lg:h-[calc(100vh-7.5rem)]">
 
-            <!-- Left panel: Project selector list (UI-7: sticky 固定，不随右侧滚动) -->
-            <div class="glass-panel lg:col-span-1 space-y-6 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
-              <h3 class="font-bold text-base text-slate-200">项目全景资产列表</h3>
-              <div class="space-y-3 max-h-[700px] overflow-y-auto pr-1">
-                <div v-for="proj in projects" :key="proj.id" 
-                     @click="selectedProjectForPanorama = proj; nextTick(() => renderTopologyChart())"
+            <!-- Left panel: 项目列表（独立滚动） -->
+            <div class="glass-panel lg:col-span-1 flex flex-col lg:h-full lg:overflow-hidden p-4">
+              <h3 class="font-bold text-base text-slate-200 shrink-0 pb-3">项目全景资产列表</h3>
+              <div class="space-y-3 overflow-y-auto pr-1 flex-1 min-h-0">
+                <div v-for="proj in projects" :key="proj.id"
+                     @click="selectPanoramaProject(proj)"
                      :class="selectedProjectForPanorama?.id === proj.id ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-300' : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700'"
                      class="p-4 rounded-xl border cursor-pointer transition-all duration-300">
                   <div class="font-bold text-xs truncate" :class="selectedProjectForPanorama?.id === proj.id ? 'text-cyan-300' : 'text-slate-200'">{{ proj.name }}</div>
@@ -1742,8 +1743,8 @@
               </div>
             </div>
 
-            <!-- Right panel: Dashboard details -->
-            <div class="lg:col-span-3 space-y-6">
+            <!-- Right panel: 详情（独立滚动） -->
+            <div class="lg:col-span-3 space-y-6 lg:h-full lg:overflow-y-auto pr-1">
               <div v-if="!selectedProjectForPanorama" class="glass-panel text-center py-40 text-slate-500">
                 <i class="fa-solid fa-compass text-5xl mb-4"></i>
                 <p class="text-xs">请在左侧列表中选定项目，查看项目全景监控视图。</p>
@@ -2313,6 +2314,6 @@
   <script src="/clients/dashboard.js?v=20260609_r5"></script>
 
   <!-- 主要 Vue 运行逻辑 -->
-  <script src="app.js?v=20260609_ui8"></script>
+  <script src="app.js?v=20260610_ui16"></script>
 </body>
 </html>

@@ -435,6 +435,22 @@ createApp({
       return proj;
     };
 
+    // UI-16: 全景监控舱选中项目 → 实时从数据库回读该项目开票/汇款明细，
+    // 杜绝详情视图与列表预载/其它视图之间的数据不一致（"数据未连通数据库"根因）。
+    const panoramaLoading = ref(false);
+    const selectPanoramaProject = async (proj) => {
+      selectedProjectForPanorama.value = proj;
+      panoramaLoading.value = true;
+      try {
+        await refreshProjectFinance(proj);          // 直连 DB 回读最新明细
+        const idx = projects.value.findIndex((p) => p.id === proj.id);
+        if (idx !== -1) projects.value[idx] = { ...proj };  // 同步回列表，保持全局一致
+      } finally {
+        panoramaLoading.value = false;
+      }
+      nextTick(() => { renderTopologyChart(); renderProjectFinanceCharts(); });
+    };
+
     // R5: 数据装配 delegate 到 api/projects.js
     const loadProjects = async () => {
       try {
@@ -2824,6 +2840,8 @@ createApp({
       // UI-7: 全景监控舱 — 拓扑图 + 单项目财务报表
       renderTopologyChart,
       renderProjectFinanceCharts,
+      selectPanoramaProject,
+      panoramaLoading,
       currentUser,
       activeTab,
       sidebarOpen,
