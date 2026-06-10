@@ -1883,14 +1883,14 @@
           </div>
 
           <!-- ── 模块 7c: 项目全景监控舱 (ADMIN PANORAMA) ── -->
-          <div v-if="activeTab === 'admin_panorama'" class="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            
-            <!-- Left panel: Project selector list -->
-            <div class="glass-panel lg:col-span-1 space-y-6">
+          <div v-if="activeTab === 'admin_panorama'" class="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
+
+            <!-- Left panel: Project selector list (UI-7: sticky 固定，不随右侧滚动) -->
+            <div class="glass-panel lg:col-span-1 space-y-6 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
               <h3 class="font-bold text-base text-slate-200">项目全景资产列表</h3>
               <div class="space-y-3 max-h-[700px] overflow-y-auto pr-1">
                 <div v-for="proj in projects" :key="proj.id" 
-                     @click="selectedProjectForPanorama = proj; nextTick(() => renderTopologyChart())"
+                     @click="selectedProjectForPanorama = proj; nextTick(() => { renderTopologyChart(); renderProjectFinanceCharts(); })"
                      :class="selectedProjectForPanorama?.id === proj.id ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-300' : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700'"
                      class="p-4 rounded-xl border cursor-pointer transition-all duration-300">
                   <div class="font-bold text-xs truncate" :class="selectedProjectForPanorama?.id === proj.id ? 'text-cyan-300' : 'text-slate-200'">{{ proj.name }}</div>
@@ -2091,13 +2091,25 @@
                   <div id="projectTopologyChart" class="w-full h-[380px] bg-slate-950/20 rounded-xl border border-slate-850"></div>
                 </div>
 
-                <!-- 发票与回款明细表格 (项目财务详情侧栏表格形态) -->
-                <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                <!-- UI-7: 单项目财务报表小图（开票/汇款/应收 + 月度走势） -->
+                <div class="glass-panel p-6">
+                  <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-bold text-sm text-slate-200">单项目财务报表</h3>
+                    <span class="text-[10px] text-cyan-400 font-mono">Project Finance Report</span>
+                  </div>
+                  <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                    <div :id="'projectFinanceDonut_' + selectedProjectForPanorama.id" class="w-full h-[260px] xl:col-span-1 bg-slate-950/20 rounded-xl border border-slate-850"></div>
+                    <div :id="'projectFinanceBars_' + selectedProjectForPanorama.id" class="w-full h-[260px] xl:col-span-2 bg-slate-950/20 rounded-xl border border-slate-850"></div>
+                  </div>
+                </div>
+
+                <!-- UI-7: 发票/汇款明细改为竖向堆叠（满宽，避免列挤压） -->
+                <div class="space-y-6">
                   <!-- 发票记录 -->
                   <div class="glass-panel p-5 space-y-4">
                     <div class="flex justify-between items-center border-b border-slate-800 pb-2">
                       <h4 class="font-bold text-sm text-slate-200">发票记录</h4>
-                      <span class="text-[10px] text-purple-400 font-mono">Invoices</span>
+                      <span class="text-[10px] text-purple-400 font-mono">Invoices · 共 {{ (selectedProjectForPanorama.invoices||[]).length }} 条</span>
                     </div>
                     <div class="overflow-x-auto border border-slate-800 rounded-xl">
                       <table class="table-cyber text-xs">
@@ -2115,9 +2127,9 @@
                         <tbody>
                           <tr v-for="inv in selectedProjectForPanorama.invoices" :key="inv.id">
                             <td class="font-mono text-cyan-400">{{ inv.code }}</td>
-                            <td>{{ inv.unit || '增值税专用发票' }}</td>
+                            <td>{{ inv.invoice_type === 'special' ? '增值税专用发票' : inv.invoice_type === 'normal' ? '普通发票' : (inv.unit || '增值税专用发票') }}</td>
                             <td class="font-mono font-bold text-purple-400">¥ {{ inv.amount.toLocaleString() }}</td>
-                            <td class="font-mono">{{ inv.tax_rate !== null ? inv.tax_rate + '%' : '—' }}</td>
+                            <td class="font-mono">{{ inv.tax_rate != null ? inv.tax_rate + '%' : '—' }}</td>
                             <td class="font-mono text-slate-400">{{ inv.date }}</td>
                             <td><span class="badge badge-approved py-0.5 px-1.5 text-[10px]">已审核</span></td>
                             <td>
@@ -2140,7 +2152,7 @@
                   <div class="glass-panel p-5 space-y-4">
                     <div class="flex justify-between items-center border-b border-slate-800 pb-2">
                       <h4 class="font-bold text-sm text-slate-200">汇款记录</h4>
-                      <span class="text-[10px] text-emerald-400 font-mono">Payments</span>
+                      <span class="text-[10px] text-emerald-400 font-mono">Payments · 共 {{ (selectedProjectForPanorama.payments||[]).length }} 条</span>
                     </div>
                     <div class="overflow-x-auto border border-slate-800 rounded-xl">
                       <table class="table-cyber text-xs">
@@ -2157,11 +2169,11 @@
                         </thead>
                         <tbody>
                           <tr v-for="pay in selectedProjectForPanorama.payments" :key="pay.id">
-                            <td class="truncate max-w-[100px]">{{ parsePaymentRemark(pay.remark).unit || selectedProjectForPanorama.client || '南京智云科技有限公司' }}</td>
+                            <td class="truncate max-w-[180px]">{{ pay.payer_unit || selectedProjectForPanorama.client || '—' }}</td>
                             <td class="font-mono font-bold text-emerald-400">¥ {{ pay.amount.toLocaleString() }}</td>
                             <td class="font-mono text-slate-400">{{ pay.date }}</td>
                             <td>{{ pay.method }}</td>
-                            <td class="font-mono text-slate-400">{{ parsePaymentRemark(pay.remark).serial || 'BK202600000001' }}</td>
+                            <td class="font-mono text-slate-400">{{ pay.bank_serial_no || '—' }}</td>
                             <td><span class="badge badge-approved py-0.5 px-1.5 text-[10px]">已确认</span></td>
                             <td>
                               <div class="flex gap-2">
@@ -2466,6 +2478,6 @@
   <script src="/clients/dashboard.js?v=20260609_r5"></script>
 
   <!-- 主要 Vue 运行逻辑 -->
-  <script src="app.js?v=20260609_ui6"></script>
+  <script src="app.js?v=20260609_ui7"></script>
 </body>
 </html>

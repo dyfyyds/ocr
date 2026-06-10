@@ -2427,29 +2427,44 @@ createApp({
           '结项批准': '同意结项并结清工程余款'
         };
       } else if (fileType === 'invoice') {
+        // UI-7 修复：tax_rate / tax_amount 可能为 null 或 undefined（旧记录），
+        // 用 != null 同时拦截两种，并对 toLocaleString 做空值保护，避免触发
+        // TypeError 中断函数、导致点击「查看」无效。
+        const tr = item.tax_rate != null ? Number(item.tax_rate) : null;
+        const ta = item.tax_amount != null ? Number(item.tax_amount) : null;
+        const typeCN = item.invoice_type === 'special' ? '增值税专用发票'
+                     : item.invoice_type === 'normal' ? '普通发票'
+                     : (item.unit || '增值税专用发票');
         properties = {
           '文件类型': '发票扫描件 (.jpg)',
-          '发票代码': item.code ? '1100261130' : '—',
           '发票号码': item.code || '—',
-          '开票单位': item.unit || proj.client,
-          '销售方': '中建XX工程局有限公司'
+          '发票类型': typeCN,
+          '开票单位': item.unit || proj.client || '—',
+          '开票日期': item.date || '—',
         };
         ocrResult = {
-          '开票金额': `¥${item.amount.toLocaleString()}`,
-          '税率': item.tax_rate !== null ? `${item.tax_rate}%` : '6%',
-          '税额': item.tax_amount !== null ? `¥${item.tax_amount.toLocaleString()}` : `¥${(item.amount * 0.06 / 1.06).toLocaleString()}`,
-          '购买方名称': item.buyer || proj.client
+          '开票金额': `¥${(item.amount || 0).toLocaleString()}`,
+          '税率': tr != null ? `${tr}%` : '—',
+          '税额': ta != null
+            ? `¥${ta.toLocaleString()}`
+            : (tr != null ? `¥${((item.amount || 0) * tr / (100 + tr)).toFixed(2)} (估算)` : '—'),
+          '购买方名称': item.buyer || proj.client || '—',
+          '备注': item.remark || '—',
         };
       } else if (fileType === 'payment') {
+        // UI-7：null-safe，避免 amount/null 触发 TypeError 中断
         properties = {
           '文件类型': '银行回单凭证 (.jpg)',
+          '汇款单位': item.payer_unit || proj.client || '—',
           '付款方式': item.method || '银行转账',
           '付款日期': item.date || '—',
-          '对账分类': '营业收入到账归档'
+          '银行流水号': item.bank_serial_no || '—',
         };
         ocrResult = {
-          '回款金额': `¥${item.amount.toLocaleString()}`,
-          '匹配状态': '与开票相符 (对账流水已生成)'
+          '回款金额': `¥${(item.amount || 0).toLocaleString()}`,
+          '对账分类': '营业收入到账归档',
+          '匹配状态': '与开票相符 (对账流水已生成)',
+          '备注': item.remark || '—',
         };
       }
 
@@ -2459,6 +2474,78 @@ createApp({
         properties,
         ocrResult
       };
+    };
+
+    // UI-7: 单项目财务报表（环图 + 月度走势柱），admin_panorama 详情面板复用
+    let projectFinanceDonutInst = null;
+    let projectFinanceBarsInst = null;
+    const renderProjectFinanceCharts = () => {
+      const proj = selectedProjectForPanorama.value;
+      if (!proj) return;
+      const invoiced = totalInvoiced(proj);
+      const paid = totalPaid(proj);
+      const receivable = Math.max(0, invoiced - paid);
+
+      // 环图：已开票 / 已汇款 / 应收余款
+      const donutDom = document.getElementById('projectFinanceDonut_' + proj.id);
+      if (donutDom) {
+        if (projectFinanceDonutInst) projectFinanceDonutInst.dispose();
+        projectFinanceDonutInst = echarts.init(donutDom, 'dark');
+        projectFinanceDonutInst.setOption({
+          backgroundColor: 'transparent',
+          tooltip: { trigger: 'item', formatter: '{b}: ¥{c} ({d}%)' },
+          legend: { orient: 'horizontal', bottom: '2%', textStyle: { color: '#8c9ba5', fontSize: 11 } },
+          title: { text: '财务分布', left: 'center', top: '4%', textStyle: { color: '#f5f7fa', fontSize: 13, fontWeight: 'bold' } },
+          series: [{
+            type: 'pie',
+            radius: ['45%', '70%'],
+            center: ['50%', '48%'],
+            itemStyle: { borderRadius: 6, borderColor: '#08090c', borderWidth: 3 },
+            label: { show: false },
+            data: [
+              { name: '已开票', value: invoiced, itemStyle: { color: '#a855f7' } },
+              { name: '已汇款', value: paid,     itemStyle: { color: '#10b981' } },
+              { name: '应收余款', value: receivable, itemStyle: { color: '#f59e0b' } },
+            ],
+          }],
+        });
+      }
+
+      // 柱图：近 6 月开票 vs 汇款（仅本项目）
+      const barsDom = document.getElementById('projectFinanceBars_' + proj.id);
+      if (barsDom) {
+        if (projectFinanceBarsInst) projectFinanceBarsInst.dispose();
+        projectFinanceBarsInst = echarts.init(barsDom, 'dark');
+        const now = new Date();
+        const months = [], inv = [], pay = [];
+        for (let i = 5; i >= 0; i--) {
+          const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+          months.push((d.getMonth() + 1) + '月');
+          let mi = 0, mp = 0;
+          (proj.invoices || []).forEach(x => {
+            const dt = new Date(x.date);
+            if (!isNaN(dt) && dt.getFullYear() === d.getFullYear() && dt.getMonth() === d.getMonth()) mi += parseFloat(x.amount || 0);
+          });
+          (proj.payments || []).forEach(x => {
+            const dt = new Date(x.date);
+            if (!isNaN(dt) && dt.getFullYear() === d.getFullYear() && dt.getMonth() === d.getMonth()) mp += parseFloat(x.amount || 0);
+          });
+          inv.push(mi); pay.push(mp);
+        }
+        projectFinanceBarsInst.setOption({
+          backgroundColor: 'transparent',
+          tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: (p) => p.map(it => `${it.marker}${it.seriesName}: ¥${(it.value||0).toLocaleString()}`).join('<br/>') },
+          legend: { textStyle: { color: '#8c9ba5', fontSize: 11 }, top: '4%' },
+          title: { text: '近 6 月开票/汇款', left: 'center', top: '4%', textStyle: { color: '#f5f7fa', fontSize: 13, fontWeight: 'bold' } },
+          grid: { left: '10%', right: '5%', bottom: '15%', top: '24%' },
+          xAxis: { type: 'category', data: months, axisLabel: { color: '#8c9ba5', fontSize: 10 }, axisLine: { lineStyle: { color: '#334155' } } },
+          yAxis: { type: 'value', axisLabel: { color: '#8c9ba5', fontSize: 10, formatter: v => v >= 10000 ? (v/10000) + '万' : v }, splitLine: { lineStyle: { color: '#1e293b' } } },
+          series: [
+            { name: '开票', type: 'bar', data: inv, itemStyle: { color: '#a855f7', borderRadius: [4,4,0,0] }, barMaxWidth: 24 },
+            { name: '汇款', type: 'bar', data: pay, itemStyle: { color: '#10b981', borderRadius: [4,4,0,0] }, barMaxWidth: 24 },
+          ],
+        });
+      }
     };
 
     const renderTopologyChart = () => {
@@ -2696,6 +2783,9 @@ createApp({
     });
 
     return {
+      // UI-7: 全景监控舱 — 拓扑图 + 单项目财务报表
+      renderTopologyChart,
+      renderProjectFinanceCharts,
       currentUser,
       activeTab,
       sidebarOpen,
