@@ -1089,7 +1089,8 @@
                     </div>
                   </div>
 
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <!-- UI-11: 1.发票 / 2.回款 由左右改为上下竖排，避免列挤压 -->
+                  <div class="space-y-6">
                     <!-- 1. 发票登记 & 列表 -->
                     <div class="glass-panel space-y-4 border-t-2 border-t-purple-500">
                       <div class="flex justify-between items-center">
@@ -1267,39 +1268,57 @@
                   </div>
                 </div>
 
-                <!-- 税率 -->
+                <!-- 税率 — UI-11: 改为 number 输入，支持手输或 OCR 自动回填，提示常用值 -->
                 <div class="flex flex-col gap-2">
-                  <label class="text-xs font-semibold text-slate-350">税率 <span class="text-rose-500">*</span></label>
-                  <select v-model="invoiceUploadForm.tax_rate" class="input-cyber py-2 text-sm bg-slate-900 w-full" @change="calculateTaxAmountForTab" required>
-                    <option value="13">13%</option>
-                    <option value="9">9%</option>
-                    <option value="6">6%</option>
-                    <option value="3">3%</option>
-                    <option value="1">1%</option>
-                    <option value="0">0%</option>
-                  </select>
+                  <label class="text-xs font-semibold text-slate-350">税率 (%) <span class="text-rose-500">*</span></label>
+                  <input v-model="invoiceUploadForm.tax_rate" type="number" min="0" max="100" step="0.01"
+                         class="input-cyber py-2 text-sm w-full"
+                         placeholder="常用 13 / 9 / 6 / 3 / 1 / 0，可手输或上传 OCR 自动识别"
+                         @input="calculateTaxAmountForTab" required>
                 </div>
               </div>
 
-              <!-- 上传发票文件 (Dropzone) -->
+              <!-- 上传发票文件 — UI-11: 多文件 + 单个删除 -->
               <div class="flex flex-col gap-2">
                 <label class="text-xs font-semibold text-slate-350">上传发票文件 <span class="text-rose-500">*</span></label>
-                <div @click="scanInvoiceForTab" 
-                     class="border-2 border-dashed border-purple-500/30 hover:border-purple-400 bg-purple-950/5 hover:bg-purple-950/10 rounded-2xl p-8 text-center cursor-pointer transition-all duration-300 space-y-3">
+                <div @click="scanInvoiceForTab"
+                     class="border-2 border-dashed border-purple-500/30 hover:border-purple-400 bg-purple-950/5 hover:bg-purple-950/10 rounded-2xl p-6 text-center cursor-pointer transition-all duration-300 space-y-3">
                   <div class="inline-flex size-14 items-center justify-center rounded-2xl bg-purple-500/10 text-purple-400 text-2xl">
-                    <i v-if="!invoiceUploadForm.fileName" class="fa-solid fa-cloud-arrow-up"></i>
-                    <i v-else class="fa-solid fa-file-image animate-bounce"></i>
+                    <i class="fa-solid fa-cloud-arrow-up"></i>
                   </div>
                   <div class="space-y-1">
-                    <p class="text-sm font-semibold text-slate-200">
-                      {{ invoiceUploadForm.fileName ? '已选择：' + invoiceUploadForm.fileName : '点击或拖拽文件到此处上传' }}
-                    </p>
-                    <p class="text-xs text-slate-500">支持 PDF、JPG、PNG 格式，大小不超过 10MB</p>
+                    <p class="text-sm font-semibold text-slate-200">点击或拖拽文件到此处上传 (可多选)</p>
+                    <p class="text-xs text-slate-500">支持 PDF、JPG、PNG 格式，每个文件不超过 10MB；OCR 自动回填空字段</p>
                   </div>
                   <div v-if="invoiceScanning" class="text-xs text-purple-400 flex items-center justify-center gap-2">
                     <i class="fa-solid fa-spinner fa-spin"></i>
                     <span>正在运行 PaddleOCR 智能识别提取...</span>
                   </div>
+                </div>
+                <!-- 已选文件列表（每项可单独删除） -->
+                <div v-if="invoiceUploadForm.files.length" class="space-y-2 pt-1">
+                  <div v-for="(f, idx) in invoiceUploadForm.files" :key="idx"
+                       class="flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-purple-500/20 bg-purple-950/20">
+                    <div class="flex items-center gap-2 min-w-0 flex-1">
+                      <i class="fa-solid fa-file-image text-purple-400 shrink-0"></i>
+                      <span class="text-xs text-slate-200 truncate">{{ f.name }}</span>
+                      <span class="text-[10px] shrink-0"
+                            :class="f.ocrStatus === 'done' ? 'text-emerald-400'
+                              : f.ocrStatus === 'failed' ? 'text-rose-400'
+                              : 'text-amber-400'">
+                        <i class="fa-solid mr-0.5"
+                           :class="f.ocrStatus === 'done' ? 'fa-circle-check'
+                             : f.ocrStatus === 'failed' ? 'fa-circle-xmark'
+                             : 'fa-spinner fa-spin'"></i>
+                        {{ f.ocrStatus === 'done' ? 'OCR 已识别' : f.ocrStatus === 'failed' ? 'OCR 失败' : '待识别' }}
+                      </span>
+                    </div>
+                    <button @click.stop="removeInvoiceFileAt(idx)"
+                            class="text-rose-400 hover:bg-rose-500/10 px-2 py-1 rounded text-xs shrink-0">
+                      <i class="fa-solid fa-trash"></i> 删除
+                    </button>
+                  </div>
+                  <p class="text-[10px] text-slate-500">入库主附件取列表首项；其余文件仅用于 OCR 字段辅助识别。</p>
                 </div>
               </div>
 
@@ -1377,21 +1396,33 @@
                 </div>
               </div>
 
-              <!-- 上传汇款凭证 (Dropzone) -->
+              <!-- 上传汇款凭证 — UI-11: 多文件 + 单个删除（汇款暂无 OCR API） -->
               <div class="flex flex-col gap-2">
                 <label class="text-xs font-semibold text-slate-350">上传汇款凭证 <span class="text-rose-500">*</span></label>
-                <div @click="pickPaymentVoucherForTab" 
-                     class="border-2 border-dashed border-emerald-500/30 hover:border-emerald-400 bg-emerald-950/5 hover:bg-emerald-950/10 rounded-2xl p-8 text-center cursor-pointer transition-all duration-300 space-y-3">
+                <div @click="pickPaymentVoucherForTab"
+                     class="border-2 border-dashed border-emerald-500/30 hover:border-emerald-400 bg-emerald-950/5 hover:bg-emerald-950/10 rounded-2xl p-6 text-center cursor-pointer transition-all duration-300 space-y-3">
                   <div class="inline-flex size-14 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-400 text-2xl">
-                    <i v-if="!paymentUploadForm.fileName" class="fa-solid fa-cloud-arrow-up"></i>
-                    <i v-else class="fa-solid fa-file-invoice-dollar animate-bounce"></i>
+                    <i class="fa-solid fa-cloud-arrow-up"></i>
                   </div>
                   <div class="space-y-1">
-                    <p class="text-sm font-semibold text-slate-200">
-                      {{ paymentUploadForm.fileName ? '已选择：' + paymentUploadForm.fileName : '点击或拖拽文件到此处上传' }}
-                    </p>
-                    <p class="text-xs text-slate-500">支持 PDF、JPG、PNG 格式，大小不超过 10MB</p>
+                    <p class="text-sm font-semibold text-slate-200">点击或拖拽文件到此处上传 (可多选)</p>
+                    <p class="text-xs text-slate-500">支持 PDF、JPG、PNG 格式，每个文件不超过 10MB；暂无 OCR 自动识别</p>
                   </div>
+                </div>
+                <!-- 已选文件列表（每项可单独删除） -->
+                <div v-if="paymentUploadForm.files.length" class="space-y-2 pt-1">
+                  <div v-for="(f, idx) in paymentUploadForm.files" :key="idx"
+                       class="flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-emerald-500/20 bg-emerald-950/20">
+                    <div class="flex items-center gap-2 min-w-0 flex-1">
+                      <i class="fa-solid fa-file-invoice-dollar text-emerald-400 shrink-0"></i>
+                      <span class="text-xs text-slate-200 truncate">{{ f.name }}</span>
+                    </div>
+                    <button @click.stop="removePaymentFileAt(idx)"
+                            class="text-rose-400 hover:bg-rose-500/10 px-2 py-1 rounded text-xs shrink-0">
+                      <i class="fa-solid fa-trash"></i> 删除
+                    </button>
+                  </div>
+                  <p class="text-[10px] text-slate-500">入库主附件取列表首项。</p>
                 </div>
               </div>
 
