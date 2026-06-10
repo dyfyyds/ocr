@@ -15,6 +15,8 @@ from app.utils.file_utils import validate_file_type, validate_file_size
 from app.core.contract_parser import (
     parse_word_contract_with_llm, parse_pdf_contract_with_llm,
     _merge_extracted, _try_llm_extract, CONTRACT_FIELDS,
+    INVOICE_FIELDS, PAYMENT_FIELDS,
+    _extract_invoice_fields, _extract_payment_fields,
 )
 from app.core.ocr_engine import ocr_from_image_bytes
 from app.core.nlp_extractor import extractor
@@ -65,20 +67,27 @@ async def recognize_file(
             ocr_items = ocr_from_image_bytes(content)
             full_text = "\n".join([item["text"] for item in ocr_items])
 
-            # 正则提取（合同 + 发票）
+            # 正则提取（合同 + 发票 + 汇款）
             contract_extracted = extractor.extract(full_text)
             invoice_extracted = _extract_invoice_fields(full_text)
+            payment_extracted = _extract_payment_fields(full_text)
 
-            # LLM 提取（受 llm_enabled 开关控制）
+            # LLM 提取（受 llm_enabled 开关控制；面向合同字段）
             llm_result = await _try_llm_extract(full_text, db)
 
-            # 合并：LLM 优先，正则兜底
-            merged_regex = {**invoice_extracted, **contract_extracted}
-            merged, source_map = _merge_extracted(merged_regex, llm_result)
+            # UI-12 关键修复：合并时把发票字段一并纳入 fields（此前只 merge CONTRACT_FIELDS，
+            # 发票字段被丢弃 → 前端拿不到 → 不回填）。汇款字段单独返回供汇款表单使用。
+            merged_regex = {**payment_extracted, **invoice_extracted, **contract_extracted}
+            merge_fields = tuple(dict.fromkeys(CONTRACT_FIELDS + INVOICE_FIELDS))
+            merged, source_map = _merge_extracted(merged_regex, llm_result, fields=merge_fields)
+
+            # 汇款字段信封（payment_extracted 已是规则提取结果）
+            payment_merged = {f: str(payment_extracted.get(f, "") or "").strip() for f in PAYMENT_FIELDS}
 
             result = {
                 "raw_text": full_text[:2000],
                 "extracted": merged,
+                "payment_extracted": payment_merged,
                 "extracted_by": source_map,
                 "regex_extracted": merged_regex,
                 "llm_extracted": llm_result,
@@ -99,36 +108,3 @@ async def recognize_file(
         "file_name": file.filename,
         **result,
     }
-
-
-def _extract_invoice_fields(text: str) -> dict:
-    """从发票文本中提取关键字段。"""
-    import re
-
-    fields = {}
-
-    m = re.search(r"发票号码[：:]\s*(\d+)", text)
-    if m:
-        fields["invoice_no"] = m.group(1)
-
-    m = re.search(r"发票代码[：:]\s*(\d+)", text)
-    if m:
-        fields["invoice_code"] = m.group(1)
-
-    m = re.search(r"[¥￥]\s*([\d,]+\.?\d*)", text)
-    if m:
-        fields["amount"] = m.group(1).replace(",", "")
-
-    m = re.search(r"(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日", text)
-    if m:
-        fields["invoice_date"] = f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
-
-    m = re.search(r"购买方[：:]\s*(.+?)(?:\n|$)", text)
-    if m:
-        fields["buyer_name"] = m.group(1).strip()
-
-    m = re.search(r"销售方[：:]\s*(.+?)(?:\n|$)", text)
-    if m:
-        fields["seller_name"] = m.group(1).strip()
-
-    return fields
