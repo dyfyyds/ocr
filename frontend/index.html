@@ -831,50 +831,7 @@
                 </div>
               </div>
 
-              <!-- 前期预算登记 -->
-              <div class="glass-panel space-y-4 bg-slate-900/20">
-                <h3 class="font-bold text-base text-slate-200">登记项目预算支出（外包、服务器、软件授权等）</h3>
-                
-                <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
-                  <div class="flex flex-col gap-2 sm:col-span-2">
-                    <label class="text-xs text-slate-400 font-medium">开销支出说明</label>
-                    <input v-model="newExpense.desc" type="text" class="input-cyber" placeholder="如：服务器采购 / 第三方外包服务">
-                  </div>
-                  <div class="flex flex-col gap-2">
-                    <label class="text-xs text-slate-400 font-medium">支出金额 (¥)</label>
-                    <input v-model="newExpense.amount" type="number" min="0" step="0.01" class="input-cyber" placeholder="0.00">
-                  </div>
-                  <div class="flex flex-col gap-2">
-                    <label class="text-xs text-slate-400 font-medium">支出日期</label>
-                    <input v-model="newExpense.date" type="date" class="input-cyber">
-                  </div>
-                </div>
-
-                <div class="flex justify-end">
-                  <button type="button" @click="addExpenseItem" class="btn-cyber btn-cyber-secondary py-1.5 text-xs px-4"><i class="fa-solid fa-plus"></i> 添加支出流水</button>
-                </div>
-
-                <!-- 已登记支出流水 -->
-                <div v-if="formProject.expenses.length" class="overflow-x-auto border border-slate-800 rounded-xl">
-                  <table class="table-cyber">
-                    <thead>
-                      <tr><th>支出说明</th><th>金额</th><th>日期</th><th class="text-right">操作</th></tr>
-                    </thead>
-                    <tbody>
-                      <tr v-for="(item, idx) in formProject.expenses" :key="idx">
-                        <td>{{ item.desc }}</td>
-                        <td class="text-amber-400 font-mono">¥ {{ item.amount.toLocaleString() }}</td>
-                        <td class="text-slate-400">{{ item.date }}</td>
-                        <td class="text-right"><button @click="removeExpenseItem(idx)" class="text-rose-400 hover:text-rose-300 text-xs px-2 py-1 bg-rose-500/10 rounded">删除</button></td>
-                      </tr>
-                    </tbody>
-                    <tfoot>
-                      <tr><td class="font-bold text-slate-300">支出合计</td><td colspan="3" class="text-amber-400 font-mono font-bold">¥ {{ totalFormExpenses.toLocaleString() }}</td></tr>
-                    </tfoot>
-                  </table>
-                </div>
-                <p v-else class="text-xs text-slate-500">尚未登记任何项目支出（此步骤为可选）。</p>
-              </div>
+              <!-- UI-9: 删除项目支出登记整段（冗余无用，前端 expenses 不入后端） -->
 
               <!-- 步骤导航 -->
               <div class="flex justify-between items-center border-t border-slate-800 pt-6">
