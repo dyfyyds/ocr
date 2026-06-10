@@ -59,30 +59,24 @@ createApp({
     const tempInvoice = ref({ amount: '', tax_rate: '', tax_amount: '', code: '', date: '', unit: '', buyer: '', seller: '' });
     const tempPayment = ref({ amount: '', method: '银行转账', date: '' });
 
-    // UI-11: files 改为数组，支持多文件上传 + 单个删除；首文件作为主附件入库
-    const invoiceUploadForm = ref({
-      project_id: '',
-      invoice_no: '',
-      amount: '',
-      tax_rate: '6',
-      tax_amount: '',
-      invoice_date: new Date().toISOString().split('T')[0],
-      invoice_type: 'special',
-      buyer: '',
-      seller: '',
-      files: [],          // [{file, name, ocrStatus: 'pending'|'done'|'failed'}]
-      remark: ''
+    // UI-13: 多条目录入 —— 表单仅保留批次级 project_id；每个文件 OCR 生成一条可独立编辑/删除的明细
+    const todayStr = () => new Date().toISOString().split('T')[0];
+
+    const invoiceUploadForm = ref({ project_id: '' });
+    const invoiceEntries = ref([]);   // 每条: {amount,invoice_no,tax_rate,tax_amount,invoice_date,invoice_type,buyer,seller,remark,file,fileName,ocrStatus}
+    const newInvoiceEntry = (over = {}) => ({
+      amount: '', invoice_no: '', tax_rate: '', tax_amount: '',
+      invoice_date: todayStr(), invoice_type: 'special',
+      buyer: '', seller: '', remark: '',
+      file: null, fileName: '', ocrStatus: 'manual', ...over,
     });
 
-    const paymentUploadForm = ref({
-      project_id: '',
-      unit: '',
-      amount: '',
-      payment_date: new Date().toISOString().split('T')[0],
-      payment_method: '银行转账',
-      serial: '',
-      files: [],          // [{file, name}]  暂无 OCR API
-      remark: ''
+    const paymentUploadForm = ref({ project_id: '' });
+    const paymentEntries = ref([]);   // 每条: {amount,payment_date,payment_method,payer_unit,bank_serial_no,remark,file,fileName,ocrStatus}
+    const newPaymentEntry = (over = {}) => ({
+      amount: '', payment_date: todayStr(), payment_method: '银行转账',
+      payer_unit: '', bank_serial_no: '', remark: '',
+      file: null, fileName: '', ocrStatus: 'manual', ...over,
     });
 
     // 全景控制舱与文件预览
@@ -989,6 +983,7 @@ createApp({
     // ── 财务总监端（开票与回款） ──
     const pickedInvoiceFile = ref(null);   // 待上传的发票图片/PDF
     const invoiceScanning = ref(false);    // 发票 OCR 识别中标志
+    const paymentScanning = ref(false);    // 汇款 OCR 识别中标志（UI-13）
     const pickedPaymentFile = ref(null);   // 待上传的回款凭证
 
     const triggerRecordFinance = (proj) => {
@@ -1132,47 +1127,44 @@ createApp({
       }
     };
 
+    // ── UI-13: 发票多条目录入（每个文件 OCR 生成一条可独立编辑/删除的记录） ──
+    const recalcInvoiceEntryTax = (e) => {
+      const amt = parseFloat(e.amount), rate = parseFloat(e.tax_rate);
+      if (!isNaN(amt) && !isNaN(rate)) {
+        e.tax_amount = parseFloat((amt * rate / (100 + rate)).toFixed(2));
+      }
+    };
+
     const scanInvoiceForTab = async () => {
-      // UI-11: 多文件上传，逐个 OCR；空字段才由 OCR 回填（避免覆盖手工输入）
       const files = await pickFile('.jpg,.jpeg,.png,.pdf', { multiple: true });
       const list = Array.isArray(files) ? files : files ? [files] : [];
-      if (list.length === 0) return;
-
-      list.forEach((f) => invoiceUploadForm.value.files.push({ file: f, name: f.name, ocrStatus: 'pending' }));
-
+      if (!list.length) return;
       invoiceScanning.value = true;
       isScanning.value = true;
       try {
-        for (const entry of invoiceUploadForm.value.files.filter((e) => e.ocrStatus === 'pending')) {
-          addLog('OCR扫描', `正在识别发票文件：${entry.name}...`);
+        for (const f of list) {
+          const entry = newInvoiceEntry({ file: f, fileName: f.name, ocrStatus: 'pending' });
+          invoiceEntries.value.push(entry);
+          addLog('OCR扫描', `正在识别发票文件：${f.name}...`);
           try {
             const fd = new FormData();
-            fd.append('file', entry.file);
+            fd.append('file', f);
             const res = await api('/ocr/recognize', { method: 'POST', body: fd, isForm: true });
             const ex = res?.extracted || {};
-            const form = invoiceUploadForm.value;
-            // 仅在字段为空时回填，让用户的手工输入优先
-            if (!form.amount && ex.amount) {
-              const amt = parseFloat(String(ex.amount).replace(/,/g, ''));
-              if (!isNaN(amt)) form.amount = amt;
-            }
-            if (!form.invoice_no && ex.invoice_no) form.invoice_no = ex.invoice_no;
-            if (!form.invoice_date && ex.invoice_date) form.invoice_date = ex.invoice_date;
-            if (!form.buyer && ex.buyer_name) form.buyer = ex.buyer_name;
-            if (!form.seller && ex.seller_name) form.seller = ex.seller_name;
-            if (!form.tax_rate && ex.tax_rate) {
-              form.tax_rate = String(ex.tax_rate).replace('%', '').trim();
-            }
-            if (!form.tax_amount && ex.tax_amount) form.tax_amount = ex.tax_amount;
+            if (ex.amount) { const a = parseFloat(String(ex.amount).replace(/,/g, '')); if (!isNaN(a)) entry.amount = a; }
+            if (ex.invoice_no) entry.invoice_no = ex.invoice_no;
+            if (ex.invoice_date) entry.invoice_date = ex.invoice_date;
+            if (ex.buyer_name) entry.buyer = ex.buyer_name;
+            if (ex.seller_name) entry.seller = ex.seller_name;
+            if (ex.tax_rate) entry.tax_rate = String(ex.tax_rate).replace('%', '').trim();
+            if (ex.tax_amount) entry.tax_amount = ex.tax_amount;
+            if (!entry.tax_amount && entry.amount && entry.tax_rate) recalcInvoiceEntryTax(entry);
             entry.ocrStatus = 'done';
-            addLog('OCR扫描', `发票 ${entry.name} 识别完成。`);
+            addLog('OCR扫描', `发票 ${f.name} 识别完成。`);
           } catch (err) {
             entry.ocrStatus = 'failed';
-            addLog('系统', `发票 ${entry.name} OCR 失败：${err.message}`);
+            addLog('系统', `发票 ${f.name} OCR 失败：${err.message}`);
           }
-        }
-        if (!invoiceUploadForm.value.tax_amount && invoiceUploadForm.value.amount && invoiceUploadForm.value.tax_rate) {
-          calculateTaxAmountForTab();
         }
       } finally {
         invoiceScanning.value = false;
@@ -1180,135 +1172,126 @@ createApp({
       }
     };
 
-    // UI-11: 单个删除已上传的发票文件
-    const removeInvoiceFileAt = (idx) => {
-      invoiceUploadForm.value.files.splice(idx, 1);
-    };
-
-    const calculateTaxAmountForTab = () => {
-      const amt = parseFloat(invoiceUploadForm.value.amount);
-      const rate = parseFloat(invoiceUploadForm.value.tax_rate);
-      if (!isNaN(amt) && !isNaN(rate)) {
-        if (amt === 1590000 && rate === 6) {
-          invoiceUploadForm.value.tax_amount = 90000;
-        } else if (amt === 848000 && rate === 6) {
-          invoiceUploadForm.value.tax_amount = 48000;
-        } else {
-          invoiceUploadForm.value.tax_amount = parseFloat((amt * rate / (100 + rate)).toFixed(2));
-        }
-      }
-    };
+    const addBlankInvoiceEntry = () => invoiceEntries.value.push(newInvoiceEntry());
+    const removeInvoiceEntry = (idx) => invoiceEntries.value.splice(idx, 1);
 
     const submitInvoiceUpload = async () => {
-      const form = invoiceUploadForm.value;
-      if (!form.project_id) { alert('请选择关联项目'); return; }
-      if (!form.invoice_no) { alert('请填写发票号码'); return; }
-      if (!form.amount) { alert('请填写发票金额'); return; }
-
-      try {
-        const fd = new FormData();
-        fd.append('amount', form.amount);
-        fd.append('invoice_date', form.invoice_date || new Date().toISOString().split('T')[0]);
-        if (form.tax_rate !== undefined && form.tax_rate !== '') fd.append('tax_rate', form.tax_rate);
-        if (form.tax_amount !== undefined && form.tax_amount !== '') fd.append('tax_amount', form.tax_amount);
-        fd.append('invoice_no', form.invoice_no);
-        if (form.buyer) fd.append('buyer_name', form.buyer);
-        if (form.seller) fd.append('seller_name', form.seller);
-        // UI-2 修复：invoice_type 是发票类型枚举（special/normal），独立字段；旧代码错误地塞进 invoice_unit。
-        if (form.invoice_type) fd.append('invoice_type', form.invoice_type);
-        if (form.remark) fd.append('remark', form.remark);
-        // UI-11: 多文件中取首份作为入库主附件（后端 invoice 表只持久化 1 个 file_path）
-        if (form.files && form.files.length > 0) fd.append('file', form.files[0].file);
-
-        await api(`/projects/${form.project_id}/invoices`, { method: 'POST', body: fd, isForm: true });
-        addLog('财务记账', `发票登记成功。号码: ${form.invoice_no}，金额: ¥${parseFloat(form.amount).toLocaleString()}`);
-        
-        await loadProjects();
-        if (selectedProjectForPanorama.value && selectedProjectForPanorama.value.id == form.project_id) {
-          selectedProjectForPanorama.value = projects.value.find(p => p.id == form.project_id);
-        }
-        cancelInvoiceUpload();
-        alert('发票上传并登记成功！');
-      } catch (err) {
-        addLog('系统', `发票登记失败：${err.message}`);
-        alert('发票登记失败：' + err.message);
+      const pid = invoiceUploadForm.value.project_id;
+      if (!pid) { alert('请选择关联项目'); return; }
+      const entries = invoiceEntries.value;
+      if (!entries.length) { alert('请先上传发票文件或手动添加一条记录'); return; }
+      for (let i = 0; i < entries.length; i++) {
+        if (!entries[i].amount) { alert(`第 ${i + 1} 条记录：请填写发票金额`); return; }
       }
+      let ok = 0;
+      for (const e of entries) {
+        try {
+          const fd = new FormData();
+          fd.append('amount', e.amount);
+          fd.append('invoice_date', e.invoice_date || todayStr());
+          if (e.tax_rate !== '' && e.tax_rate != null) fd.append('tax_rate', e.tax_rate);
+          if (e.tax_amount !== '' && e.tax_amount != null) fd.append('tax_amount', e.tax_amount);
+          if (e.invoice_no) fd.append('invoice_no', e.invoice_no);
+          if (e.buyer) fd.append('buyer_name', e.buyer);
+          if (e.seller) fd.append('seller_name', e.seller);
+          if (e.invoice_type) fd.append('invoice_type', e.invoice_type);
+          if (e.remark) fd.append('remark', e.remark);
+          if (e.file) fd.append('file', e.file);
+          await api(`/projects/${pid}/invoices`, { method: 'POST', body: fd, isForm: true });
+          ok++;
+        } catch (err) {
+          addLog('系统', `发票登记失败：${err.message}`);
+        }
+      }
+      addLog('财务记账', `批量发票登记完成：成功 ${ok}/${entries.length} 条。`);
+      await loadProjects();
+      if (selectedProjectForPanorama.value && selectedProjectForPanorama.value.id == pid) {
+        selectedProjectForPanorama.value = projects.value.find(p => p.id == pid);
+      }
+      cancelInvoiceUpload();
+      alert(`发票登记完成：成功 ${ok}/${entries.length} 条`);
     };
 
     const cancelInvoiceUpload = () => {
-      invoiceUploadForm.value = {
-        project_id: '',
-        invoice_no: '',
-        amount: '',
-        tax_rate: '6',
-        tax_amount: '',
-        invoice_date: new Date().toISOString().split('T')[0],
-        invoice_type: 'special',
-        buyer: '',
-        seller: '',
-        files: [],
-        remark: ''
-      };
+      invoiceUploadForm.value = { project_id: '' };
+      invoiceEntries.value = [];
     };
 
-    const pickPaymentVoucherForTab = async () => {
-      // UI-11: 汇款凭证多文件上传（无 OCR API，仅作附件记录）
+    // ── UI-13: 汇款多条目录入（每个凭证 OCR 生成一条可独立编辑/删除的记录） ──
+    const scanPaymentForTab = async () => {
       const files = await pickFile('.jpg,.jpeg,.png,.pdf', { multiple: true });
       const list = Array.isArray(files) ? files : files ? [files] : [];
-      list.forEach((f) => paymentUploadForm.value.files.push({ file: f, name: f.name }));
-      if (list.length) addLog('系统', `已选择 ${list.length} 个汇款凭证文件。`);
-    };
-
-    const removePaymentFileAt = (idx) => {
-      paymentUploadForm.value.files.splice(idx, 1);
-    };
-
-    const submitPaymentUpload = async () => {
-      const form = paymentUploadForm.value;
-      if (!form.project_id) { alert('请选择关联项目'); return; }
-      if (!form.unit) { alert('请填写汇款单位'); return; }
-      if (!form.amount) { alert('请填写汇款金额'); return; }
-      if (!form.serial) { alert('请填写银行流水号'); return; }
-
+      if (!list.length) return;
+      paymentScanning.value = true;
+      isScanning.value = true;
       try {
-        const fd = new FormData();
-        fd.append('amount', form.amount);
-        fd.append('payment_date', form.payment_date || new Date().toISOString().split('T')[0]);
-        if (form.payment_method) fd.append('payment_method', form.payment_method);
-        // UI-11: 多文件中取首份作为入库主附件
-        if (form.files && form.files.length > 0) fd.append('file', form.files[0].file);
-
-        // UI-2 修复：旧代码把 unit/serial 塞进 remark JSON；后端 UI-1 已加列，现在分字段直送。
-        if (form.unit) fd.append('payer_unit', form.unit);
-        if (form.serial) fd.append('bank_serial_no', form.serial);
-        if (form.remark) fd.append('remark', form.remark);
-
-        await api(`/projects/${form.project_id}/payments`, { method: 'POST', body: fd, isForm: true });
-        addLog('财务记账', `回款登记成功。金额: ¥${parseFloat(form.amount).toLocaleString()}，流水号: ${form.serial}`);
-        
-        await loadProjects();
-        if (selectedProjectForPanorama.value && selectedProjectForPanorama.value.id == form.project_id) {
-          selectedProjectForPanorama.value = projects.value.find(p => p.id == form.project_id);
+        for (const f of list) {
+          const entry = newPaymentEntry({ file: f, fileName: f.name, ocrStatus: 'pending' });
+          paymentEntries.value.push(entry);
+          addLog('OCR扫描', `正在识别汇款凭证：${f.name}...`);
+          try {
+            const fd = new FormData();
+            fd.append('file', f);
+            const res = await api('/ocr/recognize', { method: 'POST', body: fd, isForm: true });
+            const ex = res?.payment_extracted || {};
+            if (ex.amount) { const a = parseFloat(String(ex.amount).replace(/,/g, '')); if (!isNaN(a)) entry.amount = a; }
+            if (ex.payment_date) entry.payment_date = ex.payment_date;
+            if (ex.payer_unit) entry.payer_unit = ex.payer_unit;
+            if (ex.bank_serial_no) entry.bank_serial_no = ex.bank_serial_no;
+            if (ex.payment_method) entry.payment_method = ex.payment_method;
+            entry.ocrStatus = 'done';
+            addLog('OCR扫描', `汇款凭证 ${f.name} 识别完成。`);
+          } catch (err) {
+            entry.ocrStatus = 'failed';
+            addLog('系统', `汇款凭证 ${f.name} OCR 失败：${err.message}`);
+          }
         }
-        cancelPaymentUpload();
-        alert('回款到账登记成功！');
-      } catch (err) {
-        addLog('系统', `回款登记失败：${err.message}`);
-        alert('回款登记失败：' + err.message);
+      } finally {
+        paymentScanning.value = false;
+        isScanning.value = false;
       }
     };
 
+    const addBlankPaymentEntry = () => paymentEntries.value.push(newPaymentEntry());
+    const removePaymentEntry = (idx) => paymentEntries.value.splice(idx, 1);
+
+    const submitPaymentUpload = async () => {
+      const pid = paymentUploadForm.value.project_id;
+      if (!pid) { alert('请选择关联项目'); return; }
+      const entries = paymentEntries.value;
+      if (!entries.length) { alert('请先上传汇款凭证或手动添加一条记录'); return; }
+      for (let i = 0; i < entries.length; i++) {
+        if (!entries[i].amount) { alert(`第 ${i + 1} 条记录：请填写汇款金额`); return; }
+      }
+      let ok = 0;
+      for (const e of entries) {
+        try {
+          const fd = new FormData();
+          fd.append('amount', e.amount);
+          fd.append('payment_date', e.payment_date || todayStr());
+          if (e.payment_method) fd.append('payment_method', e.payment_method);
+          if (e.payer_unit) fd.append('payer_unit', e.payer_unit);
+          if (e.bank_serial_no) fd.append('bank_serial_no', e.bank_serial_no);
+          if (e.remark) fd.append('remark', e.remark);
+          if (e.file) fd.append('file', e.file);
+          await api(`/projects/${pid}/payments`, { method: 'POST', body: fd, isForm: true });
+          ok++;
+        } catch (err) {
+          addLog('系统', `回款登记失败：${err.message}`);
+        }
+      }
+      addLog('财务记账', `批量回款登记完成：成功 ${ok}/${entries.length} 条。`);
+      await loadProjects();
+      if (selectedProjectForPanorama.value && selectedProjectForPanorama.value.id == pid) {
+        selectedProjectForPanorama.value = projects.value.find(p => p.id == pid);
+      }
+      cancelPaymentUpload();
+      alert(`回款登记完成：成功 ${ok}/${entries.length} 条`);
+    };
+
     const cancelPaymentUpload = () => {
-      paymentUploadForm.value = {
-        project_id: '',
-        unit: '',
-        amount: '',
-        payment_date: new Date().toISOString().split('T')[0],
-        payment_method: '银行转账',
-        serial: '',
-        files: [],
-        remark: ''
-      };
+      paymentUploadForm.value = { project_id: '' };
+      paymentEntries.value = [];
     };
 
     const deleteInvoiceItem = async (inv, proj = null) => {
@@ -2913,15 +2896,21 @@ createApp({
       totalInvoiced,
       totalPaid,
       scanInvoice,
+      // UI-13: 发票/汇款多条目录入
+      invoiceEntries,
       scanInvoiceForTab,
-      removeInvoiceFileAt,
-      calculateTaxAmountForTab,
+      addBlankInvoiceEntry,
+      removeInvoiceEntry,
+      recalcInvoiceEntryTax,
       submitInvoiceUpload,
       cancelInvoiceUpload,
-      pickPaymentVoucherForTab,
-      removePaymentFileAt,
+      paymentEntries,
+      scanPaymentForTab,
+      addBlankPaymentEntry,
+      removePaymentEntry,
       submitPaymentUpload,
       cancelPaymentUpload,
+      paymentScanning,
       deleteInvoiceItem,
       deletePaymentItem,
       parsePaymentRemark,
