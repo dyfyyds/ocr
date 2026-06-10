@@ -2476,9 +2476,22 @@ createApp({
       };
     };
 
-    // UI-7: 单项目财务报表（环图 + 月度走势柱），admin_panorama 详情面板复用
+    // UI-7/UI-8: 单项目财务报表（环图 + 月度走势柱），admin_panorama 详情面板复用。
+    // UI-8 修复 stale-id 时序：DOM id 改为静态 projectFinanceDonut/Bars；
+    // watch selectedProjectForPanorama，切换项目时 nextTick 后再 requestAnimationFrame，
+    // 等浏览器完成布局再 init/setOption，避免 ECharts 在 width=0 容器里画出空白。
     let projectFinanceDonutInst = null;
     let projectFinanceBarsInst = null;
+    const scheduleFinanceRender = () => {
+      nextTick(() => {
+        // 双重让出：nextTick 让 Vue 把 DOM 写完，rAF 让浏览器布局，
+        // 再触发 ECharts init —— 这能根治"偶发空白、刷新才出"的症状。
+        requestAnimationFrame(() => renderProjectFinanceCharts());
+      });
+    };
+    watch(selectedProjectForPanorama, (proj) => {
+      if (proj && activeTab.value === 'admin_panorama') scheduleFinanceRender();
+    });
     const renderProjectFinanceCharts = () => {
       const proj = selectedProjectForPanorama.value;
       if (!proj) return;
@@ -2486,20 +2499,21 @@ createApp({
       const paid = totalPaid(proj);
       const receivable = Math.max(0, invoiced - paid);
 
-      // 环图：已开票 / 已汇款 / 应收余款
-      const donutDom = document.getElementById('projectFinanceDonut_' + proj.id);
+      // UI-8: 用稳定 id（不附 projectId），避免切换项目时 stale DOM 在 nextTick 内
+      // 取到上一项目的元素 → 初始化在已脱挂元素上 → 真实容器永久空白。
+      // 环图：已开票 / 已汇款 / 应收余款（仅 legend，无内部 title —— 外部 panel header 已写明）
+      const donutDom = document.getElementById('projectFinanceDonut');
       if (donutDom) {
         if (projectFinanceDonutInst) projectFinanceDonutInst.dispose();
         projectFinanceDonutInst = echarts.init(donutDom, 'dark');
         projectFinanceDonutInst.setOption({
           backgroundColor: 'transparent',
           tooltip: { trigger: 'item', formatter: '{b}: ¥{c} ({d}%)' },
-          legend: { orient: 'horizontal', bottom: '2%', textStyle: { color: '#8c9ba5', fontSize: 11 } },
-          title: { text: '财务分布', left: 'center', top: '4%', textStyle: { color: '#f5f7fa', fontSize: 13, fontWeight: 'bold' } },
+          legend: { orient: 'horizontal', bottom: 6, textStyle: { color: '#8c9ba5', fontSize: 11 }, itemGap: 14 },
           series: [{
             type: 'pie',
-            radius: ['45%', '70%'],
-            center: ['50%', '48%'],
+            radius: ['48%', '72%'],
+            center: ['50%', '44%'],
             itemStyle: { borderRadius: 6, borderColor: '#08090c', borderWidth: 3 },
             label: { show: false },
             data: [
@@ -2509,10 +2523,12 @@ createApp({
             ],
           }],
         });
+        projectFinanceDonutInst.resize();
       }
 
-      // 柱图：近 6 月开票 vs 汇款（仅本项目）
-      const barsDom = document.getElementById('projectFinanceBars_' + proj.id);
+      // 柱图：近 6 月开票 vs 汇款（仅本项目）—— 去掉重复 title（panel header 已写明），
+      // legend 右上对齐，避免与原标题在顶部居中处撞车。
+      const barsDom = document.getElementById('projectFinanceBars');
       if (barsDom) {
         if (projectFinanceBarsInst) projectFinanceBarsInst.dispose();
         projectFinanceBarsInst = echarts.init(barsDom, 'dark');
@@ -2535,9 +2551,8 @@ createApp({
         projectFinanceBarsInst.setOption({
           backgroundColor: 'transparent',
           tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: (p) => p.map(it => `${it.marker}${it.seriesName}: ¥${(it.value||0).toLocaleString()}`).join('<br/>') },
-          legend: { textStyle: { color: '#8c9ba5', fontSize: 11 }, top: '4%' },
-          title: { text: '近 6 月开票/汇款', left: 'center', top: '4%', textStyle: { color: '#f5f7fa', fontSize: 13, fontWeight: 'bold' } },
-          grid: { left: '10%', right: '5%', bottom: '15%', top: '24%' },
+          legend: { textStyle: { color: '#8c9ba5', fontSize: 11 }, top: 8, right: 16, itemGap: 14 },
+          grid: { left: 56, right: 16, bottom: 28, top: 40 },
           xAxis: { type: 'category', data: months, axisLabel: { color: '#8c9ba5', fontSize: 10 }, axisLine: { lineStyle: { color: '#334155' } } },
           yAxis: { type: 'value', axisLabel: { color: '#8c9ba5', fontSize: 10, formatter: v => v >= 10000 ? (v/10000) + '万' : v }, splitLine: { lineStyle: { color: '#1e293b' } } },
           series: [
@@ -2545,6 +2560,7 @@ createApp({
             { name: '汇款', type: 'bar', data: pay, itemStyle: { color: '#10b981', borderRadius: [4,4,0,0] }, barMaxWidth: 24 },
           ],
         });
+        projectFinanceBarsInst.resize();
       }
     };
 
@@ -2702,19 +2718,27 @@ createApp({
         }
       }
 
+      // UI-8: tooltip 走 cosmic-tech 暗色玻璃（原默认白底很丑），
+      //       并对 labelLayout 启用 hideOverlap + 拉大 repulsion/edgeLength，
+      //       同时 emphasis disabled 避免悬停时白底浮窗叠在节点上。
       const option = {
         backgroundColor: 'transparent',
         tooltip: {
           trigger: 'item',
+          backgroundColor: 'rgba(11, 14, 22, 0.95)',
+          borderColor: 'rgba(0, 242, 254, 0.3)',
+          borderWidth: 1,
+          textStyle: { color: '#f5f7fa', fontSize: 12, fontFamily: 'Outfit, sans-serif' },
+          extraCssText: 'box-shadow: 0 0 12px rgba(0, 242, 254, 0.15); padding: 8px 12px;',
           formatter: function(params) {
             if (params.dataType === 'node') {
-              return `<div class="p-2 font-sans">
-                <span class="font-bold text-slate-100">${params.name.replace('\n', ' ')}</span>
-              </div>`;
+              return `<div style="font-weight:700;color:#f5f7fa;">${params.name.replace('\n', ' · ')}</div>`;
             }
             return '';
-          }
+          },
         },
+        // 全图层面：标签防重叠
+        labelLayout: { hideOverlap: true, moveOverlap: 'shiftY' },
         series: [
           {
             type: 'graph',
@@ -2722,24 +2746,34 @@ createApp({
             data: nodes,
             links: links,
             roam: true,
+            draggable: true,
             label: {
               show: true,
               position: 'right',
               formatter: '{b}',
               fontSize: 10,
-              color: '#cbd5e1'
+              color: '#cbd5e1',
+            },
+            // 节点 emphasis：保留轻微高亮，但不要白色浮框
+            emphasis: {
+              focus: 'adjacency',
+              scale: 1.08,
+              label: { fontWeight: 'bold', color: '#f5f7fa' },
+              itemStyle: { borderColor: 'rgba(0, 242, 254, 0.55)', borderWidth: 2 },
             },
             force: {
-              repulsion: 300,
-              edgeLength: 100,
-              gravity: 0.08
+              // 大力斥力 + 稳定步长，让节点散开避免标签覆盖
+              repulsion: 600,
+              edgeLength: [110, 180],
+              gravity: 0.06,
+              friction: 0.25,
             },
             lineStyle: {
-              opacity: 0.6,
-              curveness: 0.15
-            }
-          }
-        ]
+              opacity: 0.55,
+              curveness: 0.18,
+            },
+          },
+        ],
       };
 
       topologyChartInstance.setOption(option);
@@ -2749,6 +2783,8 @@ createApp({
       if (projects.value.length > 0 && !selectedProjectForPanorama.value) {
         selectedProjectForPanorama.value = projects.value[0];
       }
+      // UI-8: 即便选中项目未变（重复点击 tab 时），也强制重渲染财务图表，防空白
+      scheduleFinanceRender();
       nextTick(() => {
         renderTopologyChart();
         if (topologyChartInstance && document.getElementById('projectTopologyChart')) {

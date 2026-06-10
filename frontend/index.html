@@ -195,12 +195,9 @@
               </a>
               
               <!-- UI-5: 移除「成员提交内容参考」段（商务/经理/财务 reference 视图冗余）；
-                   保留管理员独有的「项目财务详情(只读)」放入主导航。
+                   UI-8: 「项目财务详情(只读)」入口也移除 —— 工作台看板已含项目财务汇总卡 +
+                   全景监控舱可点项目进详情，sidebar 再放一份纯属重复。
                    查询汇总报表/项目结项终审 已并入工作台看板（汇总表 + 进度抽屉）。 -->
-              <a @click="activeTab = 'project_finance'; selectedFinanceProject = null" :class="{ 'active': activeTab === 'project_finance' }" class="nav-item">
-                <i class="fa-solid fa-folder-tree text-purple-400 mr-2"></i>
-                <span>项目财务详情 (只读)</span>
-              </a>
 
               <div class="text-[10px] font-bold text-slate-600 tracking-wider uppercase my-2 px-4">系统管理配置</div>
               <a @click="activeTab = 'users'" :class="{ 'active': activeTab === 'users' }" class="nav-item">
@@ -1890,7 +1887,7 @@
               <h3 class="font-bold text-base text-slate-200">项目全景资产列表</h3>
               <div class="space-y-3 max-h-[700px] overflow-y-auto pr-1">
                 <div v-for="proj in projects" :key="proj.id" 
-                     @click="selectedProjectForPanorama = proj; nextTick(() => { renderTopologyChart(); renderProjectFinanceCharts(); })"
+                     @click="selectedProjectForPanorama = proj; nextTick(() => renderTopologyChart())"
                      :class="selectedProjectForPanorama?.id === proj.id ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-300' : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700'"
                      class="p-4 rounded-xl border cursor-pointer transition-all duration-300">
                   <div class="font-bold text-xs truncate" :class="selectedProjectForPanorama?.id === proj.id ? 'text-cyan-300' : 'text-slate-200'">{{ proj.name }}</div>
@@ -2098,8 +2095,8 @@
                     <span class="text-[10px] text-cyan-400 font-mono">Project Finance Report</span>
                   </div>
                   <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
-                    <div :id="'projectFinanceDonut_' + selectedProjectForPanorama.id" class="w-full h-[260px] xl:col-span-1 bg-slate-950/20 rounded-xl border border-slate-850"></div>
-                    <div :id="'projectFinanceBars_' + selectedProjectForPanorama.id" class="w-full h-[260px] xl:col-span-2 bg-slate-950/20 rounded-xl border border-slate-850"></div>
+                    <div id="projectFinanceDonut" class="w-full h-[260px] xl:col-span-1 bg-slate-950/20 rounded-xl border border-slate-850"></div>
+                    <div id="projectFinanceBars" class="w-full h-[260px] xl:col-span-2 bg-slate-950/20 rounded-xl border border-slate-850"></div>
                   </div>
                 </div>
 
@@ -2478,6 +2475,6 @@
   <script src="/clients/dashboard.js?v=20260609_r5"></script>
 
   <!-- 主要 Vue 运行逻辑 -->
-  <script src="app.js?v=20260609_ui7"></script>
+  <script src="app.js?v=20260609_ui8"></script>
 </body>
 </html>
