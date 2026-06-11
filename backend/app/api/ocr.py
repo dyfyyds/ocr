@@ -45,57 +45,54 @@ async def recognize_file(
     validate_file_size(len(content))
 
     try:
+        # 1) 按文件类型取全文（不再按类型分叉提取逻辑：合同/发票/汇款统一三路提取）
+        ocr_items = []
         if ext == ".docx":
+            from app.core.contract_parser import _extract_text_from_docx
             with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
                 tmp.write(content)
                 tmp_path = tmp.name
             try:
-                result = await parse_word_contract_with_llm(tmp_path, db=db)
+                full_text = _extract_text_from_docx(tmp_path)
             finally:
                 os.unlink(tmp_path)
-
+            source = "python-docx"
         elif ext == ".pdf":
-            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-                tmp.write(content)
-                tmp_path = tmp.name
-            try:
-                result = await parse_pdf_contract_with_llm(tmp_path, db=db)
-            finally:
-                os.unlink(tmp_path)
-
+            from app.core.ocr_engine import ocr_from_pdf_bytes
+            ocr_items = ocr_from_pdf_bytes(content)
+            full_text = "\n".join([item["text"] for item in ocr_items])
+            source = "paddleocr"
         elif ext in IMAGE_EXTENSIONS:
             ocr_items = ocr_from_image_bytes(content)
             full_text = "\n".join([item["text"] for item in ocr_items])
-
-            # 正则提取（合同 + 发票 + 汇款）
-            contract_extracted = extractor.extract(full_text)
-            invoice_extracted = _extract_invoice_fields(full_text)
-            payment_extracted = _extract_payment_fields(full_text)
-
-            # LLM 提取（受 llm_enabled 开关控制；面向合同字段）
-            llm_result = await _try_llm_extract(full_text, db)
-
-            # UI-12 关键修复：合并时把发票字段一并纳入 fields（此前只 merge CONTRACT_FIELDS，
-            # 发票字段被丢弃 → 前端拿不到 → 不回填）。汇款字段单独返回供汇款表单使用。
-            merged_regex = {**payment_extracted, **invoice_extracted, **contract_extracted}
-            merge_fields = tuple(dict.fromkeys(CONTRACT_FIELDS + INVOICE_FIELDS))
-            merged, source_map = _merge_extracted(merged_regex, llm_result, fields=merge_fields)
-
-            # 汇款字段信封（payment_extracted 已是规则提取结果）
-            payment_merged = {f: str(payment_extracted.get(f, "") or "").strip() for f in PAYMENT_FIELDS}
-
-            result = {
-                "raw_text": full_text[:2000],
-                "extracted": merged,
-                "payment_extracted": payment_merged,
-                "extracted_by": source_map,
-                "regex_extracted": merged_regex,
-                "llm_extracted": llm_result,
-                "ocr_items": ocr_items,
-                "source": "paddleocr",
-            }
+            source = "paddleocr"
         else:
             raise ValidationError(f"不支持的文件类型: {ext}")
+
+        # 2) 三路规则提取：合同 + 发票 + 汇款（无论 PDF/图片/Word 都跑全套）
+        contract_extracted = extractor.extract(full_text)
+        invoice_extracted = _extract_invoice_fields(full_text)
+        payment_extracted = _extract_payment_fields(full_text)
+
+        # 3) LLM 提取（受 llm_enabled 开关控制；面向合同字段）
+        llm_result = await _try_llm_extract(full_text, db)
+
+        # 合并：合同 + 发票字段一并纳入 extracted；汇款字段单独返回供汇款表单使用
+        merged_regex = {**payment_extracted, **invoice_extracted, **contract_extracted}
+        merge_fields = tuple(dict.fromkeys(CONTRACT_FIELDS + INVOICE_FIELDS))
+        merged, source_map = _merge_extracted(merged_regex, llm_result, fields=merge_fields)
+        payment_merged = {f: str(payment_extracted.get(f, "") or "").strip() for f in PAYMENT_FIELDS}
+
+        result = {
+            "raw_text": full_text[:2000],
+            "extracted": merged,
+            "payment_extracted": payment_merged,
+            "extracted_by": source_map,
+            "regex_extracted": merged_regex,
+            "llm_extracted": llm_result,
+            "ocr_items": ocr_items,
+            "source": source,
+        }
 
     except ValidationError:
         raise
