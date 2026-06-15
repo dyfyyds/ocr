@@ -19,7 +19,7 @@ def register_exception_handlers(app: FastAPI):
     async def app_error_handler(request: Request, exc: AppError):
         return JSONResponse(
             status_code=exc.status_code,
-            content={"code": exc.code, "message": exc.message},
+            content={"code": exc.code, "message": exc.message, "data": None},
         )
 
     @app.exception_handler(RequestValidationError)
@@ -30,6 +30,7 @@ def register_exception_handlers(app: FastAPI):
                 "code": "VALIDATION_ERROR",
                 "message": "请求参数校验失败",
                 "detail": str(exc.errors()),
+                "data": None,
             },
         )
 
@@ -38,5 +39,5 @@ def register_exception_handlers(app: FastAPI):
         logger.exception("未处理的异常: %s", exc)
         return JSONResponse(
             status_code=500,
-            content={"code": "INTERNAL_ERROR", "message": "服务器内部错误"},
+            content={"code": "INTERNAL_ERROR", "message": "服务器内部错误", "data": None},
         )

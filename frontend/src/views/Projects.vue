@@ -6,6 +6,7 @@
         <el-menu-item index="/dashboard"><el-icon><House /></el-icon><span>工作台</span></el-menu-item>
         <el-menu-item index="/register"><el-icon><DocumentAdd /></el-icon><span>立项登记</span></el-menu-item>
         <el-menu-item index="/projects"><el-icon><Folder /></el-icon><span>项目档案</span></el-menu-item>
+        <el-menu-item index="/ocr"><el-icon><Search /></el-icon><span>OCR 识别</span></el-menu-item>
         <el-menu-item v-if="userStore.userInfo?.role === 'admin'" index="/audit"><el-icon><Checked /></el-icon><span>立项审核</span></el-menu-item>
         <el-menu-item v-if="userStore.userInfo?.role === 'admin'" index="/users"><el-icon><User /></el-icon><span>用户管理</span></el-menu-item>
         <el-menu-item v-if="userStore.userInfo?.role === 'admin'" index="/dict"><el-icon><Collection /></el-icon><span>数据字典</span></el-menu-item>
@@ -16,7 +17,7 @@
         <span style="font-size: 18px; font-weight: 500">项目档案</span>
       </el-header>
       <el-main>
-        <el-table :data="projects" v-loading="loading" stripe>
+        <el-table :data="projects" v-loading="loading" stripe @row-click="goDetail" style="cursor: pointer">
           <el-table-column prop="id" label="ID" width="60" />
           <el-table-column prop="project_name" label="项目名称" />
           <el-table-column prop="contract_no" label="合同编号" />
@@ -30,6 +31,11 @@
             </template>
           </el-table-column>
           <el-table-column prop="created_at" label="创建时间" width="180" />
+          <el-table-column label="操作" width="100" fixed="right">
+            <template #default="{ row }">
+              <el-button type="primary" link @click.stop="goDetail(row)">详情</el-button>
+            </template>
+          </el-table-column>
         </el-table>
       </el-main>
     </el-container>
@@ -38,9 +44,11 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useUserStore } from '../store/user'
 import { getProjects } from '../api/projects'
 
+const router = useRouter()
 const userStore = useUserStore()
 const projects = ref([])
 const loading = ref(false)
@@ -54,6 +62,7 @@ const statusTypeMap = {
 
 function statusLabel(s) { return statusMap[s] || s }
 function statusType(s) { return statusTypeMap[s] || '' }
+function goDetail(row) { router.push(`/projects/${row.id}`) }
 
 onMounted(async () => {
   loading.value = true

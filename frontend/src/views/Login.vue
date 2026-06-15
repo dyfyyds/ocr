@@ -44,7 +44,7 @@ const rules = {
 }
 
 const demoAccounts = [
-  { user: 'admin', pwd: 'admin123', label: '管理员' },
+  { user: 'admin', pwd: '123456', label: '管理员' },
   { user: 'business', pwd: '123456', label: '商务' },
   { user: 'finance', pwd: '123456', label: '财务' },
   { user: 'pm', pwd: '123456', label: '项目经理' },

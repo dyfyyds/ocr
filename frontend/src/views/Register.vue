@@ -6,6 +6,7 @@
         <el-menu-item index="/dashboard"><el-icon><House /></el-icon><span>工作台</span></el-menu-item>
         <el-menu-item index="/register"><el-icon><DocumentAdd /></el-icon><span>立项登记</span></el-menu-item>
         <el-menu-item index="/projects"><el-icon><Folder /></el-icon><span>项目档案</span></el-menu-item>
+        <el-menu-item index="/ocr"><el-icon><Search /></el-icon><span>OCR 识别</span></el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>
@@ -52,12 +53,13 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, reactive, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { registerProject } from '../api/projects'
 import { ElMessage } from 'element-plus'
 
 const router = useRouter()
+const route = useRoute()
 const formRef = ref()
 const loading = ref(false)
 
@@ -71,6 +73,20 @@ const form = reactive({
   description: '',
 })
 
+// 从 OCR 页面跳转过来时，预填表单数据
+onMounted(() => {
+  if (route.query.ocr === '1') {
+    if (route.query.project_name) form.project_name = route.query.project_name
+    if (route.query.contract_no) form.contract_no = route.query.contract_no
+    if (route.query.contract_amount) {
+      const amount = Number(route.query.contract_amount)
+      if (!isNaN(amount)) form.contract_amount = amount
+    }
+    if (route.query.customer_name) form.customer_name = route.query.customer_name
+    if (route.query.sign_date) form.sign_date = route.query.sign_date
+  }
+})
+
 const rules = {
   project_name: [{ required: true, message: '请输入项目名称', trigger: 'blur' }],
 }
@@ -79,9 +95,16 @@ async function handleSubmit() {
   await formRef.value.validate()
   loading.value = true
   try {
-    await registerProject(form)
+    // 清理空字符串 → null，避免 Pydantic 无法将 "" 解析为 date/Decimal/int
+    const payload = { ...form }
+    for (const key of ['contract_no', 'customer_name', 'project_type', 'sign_date', 'description']) {
+      if (payload[key] === '') payload[key] = null
+    }
+    await registerProject(payload)
     ElMessage.success('立项登记成功')
     router.push('/projects')
+  } catch (err) {
+    // 失败原因由 axios 拦截器统一弹出
   } finally {
     loading.value = false
   }

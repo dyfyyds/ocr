@@ -17,3 +17,14 @@ dist/
 # IDE
 .vscode/
 .idea/
+
+# 测试/验证文件
+_verify/
+_verify*.py
+_report_assets/
+_report*.py
+test-results/
+
+# 报告生成产物
+*.png
+!frontend/assets/*.png

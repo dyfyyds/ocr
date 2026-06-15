@@ -117,13 +117,17 @@ CREATE TABLE IF NOT EXISTS `invoices` (
     `project_id`      BIGINT       NOT NULL,
     `invoice_no`      VARCHAR(50)  DEFAULT NULL,
     `invoice_code`    VARCHAR(50)  DEFAULT NULL,
+    `invoice_type`    VARCHAR(20)  DEFAULT NULL COMMENT '发票类型：special / normal（图1）',
     `amount`          DECIMAL(15,2) NOT NULL,
+    `tax_rate`        DECIMAL(5,2) DEFAULT NULL,
+    `tax_amount`      DECIMAL(15,2) DEFAULT NULL,
     `invoice_unit`    VARCHAR(200) DEFAULT NULL,
     `invoice_date`    DATE         NOT NULL,
     `buyer_name`      VARCHAR(200) DEFAULT NULL,
     `seller_name`     VARCHAR(200) DEFAULT NULL,
     `file_path`       VARCHAR(500) DEFAULT NULL,
     `delivery_voucher` VARCHAR(500) DEFAULT NULL COMMENT '交付凭证路径',
+    `remark`          VARCHAR(500) DEFAULT NULL COMMENT '发票备注（图1）',
     `ocr_result`      JSON         DEFAULT NULL,
     `created_by`      BIGINT       NOT NULL,
     `created_at`      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -145,6 +149,8 @@ CREATE TABLE IF NOT EXISTS `payments` (
     `amount`         DECIMAL(15,2) NOT NULL,
     `payment_date`   DATE         NOT NULL,
     `payment_method` VARCHAR(50)  DEFAULT NULL,
+    `payer_unit`     VARCHAR(200) DEFAULT NULL COMMENT '汇款单位（图2 表单）',
+    `bank_serial_no` VARCHAR(100) DEFAULT NULL COMMENT '银行流水号（图2 表单）',
     `remark`         VARCHAR(500) DEFAULT NULL,
     `file_path`      VARCHAR(500) DEFAULT NULL,
     `created_by`     BIGINT       NOT NULL,
@@ -279,17 +285,15 @@ CREATE TABLE IF NOT EXISTS `system_config` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
---  初始数据：默认管理员账户
---  密码: admin123 (bcrypt 哈希)
+--  初始数据：默认用户（原型页面演示账号）
+--  所有账号密码均为: 123456 (bcrypt 哈希)
 -- ============================================================
-INSERT INTO `users` (`username`, `password_hash`, `real_name`, `role`, `status`)
-VALUES (
-    'admin',
-    '$2b$12$dYRUZMoQyiFFIjMoF8ljR.2k.I5lDgwWBq2hKyZEKOSSwO86nECh.',
-    '系统管理员',
-    'admin',
-    1
-) ON DUPLICATE KEY UPDATE `username` = `username`;
+INSERT INTO `users` (`username`, `password_hash`, `real_name`, `role`, `status`) VALUES
+('admin',    '$2b$12$K8eTu5n.ywZzV5Q5UEMqNesubj5pw8CNSxtGWs405wmq10Zp.Acji', '系统管理员',    'admin',    1),
+('business', '$2b$12$K8eTu5n.ywZzV5Q5UEMqNesubj5pw8CNSxtGWs405wmq10Zp.Acji', '张三（商务经理）', 'business', 1),
+('finance',  '$2b$12$K8eTu5n.ywZzV5Q5UEMqNesubj5pw8CNSxtGWs405wmq10Zp.Acji', '李四（财务总监）', 'finance',  1),
+('pm',       '$2b$12$K8eTu5n.ywZzV5Q5UEMqNesubj5pw8CNSxtGWs405wmq10Zp.Acji', '王五（项目经理）', 'pm',       1)
+ON DUPLICATE KEY UPDATE `password_hash` = VALUES(`password_hash`);
 
 -- ============================================================
 --  初始数据：系统默认配置
@@ -299,7 +303,11 @@ INSERT INTO `system_config` (`config_key`, `config_value`, `description`) VALUES
 ('max_file_size_mb',    '20',                       '单文件大小上限(MB)'),
 ('allowed_file_types',  '["docx","pdf","jpg","png"]','允许上传的文件类型'),
 ('jwt_expire_hours',    '2',                        'Token 有效期(小时)'),
-('refresh_expire_days', '7',                        'Refresh Token 有效期(天)')
+('refresh_expire_days', '7',                        'Refresh Token 有效期(天)'),
+('llm_enabled',         'false',                    '合同识别是否启用 LLM 提取（true/false）'),
+('llm_api_url',         'https://token-plan-cn.xiaomimimo.com/v1/chat/completions', 'LLM 接口地址'),
+('llm_api_key',         '',                         'LLM API Key'),
+('llm_model',           'mimo-v2.5-pro',            'LLM 模型名称')
 ON DUPLICATE KEY UPDATE `config_value` = VALUES(`config_value`);
 
 -- ============================================================

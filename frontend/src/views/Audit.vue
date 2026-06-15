@@ -4,9 +4,11 @@
       <div style="color: #fff; text-align: center; padding: 20px; font-size: 16px; font-weight: bold">项目管理系统</div>
       <el-menu :default-active="'/audit'" background-color="#001529" text-color="#ffffffb3" active-text-color="#409eff" router>
         <el-menu-item index="/dashboard"><el-icon><House /></el-icon><span>工作台</span></el-menu-item>
+        <el-menu-item index="/ocr"><el-icon><Search /></el-icon><span>OCR 识别</span></el-menu-item>
         <el-menu-item index="/audit"><el-icon><Checked /></el-icon><span>立项审核</span></el-menu-item>
         <el-menu-item index="/users"><el-icon><User /></el-icon><span>用户管理</span></el-menu-item>
         <el-menu-item index="/dict"><el-icon><Collection /></el-icon><span>数据字典</span></el-menu-item>
+        <el-menu-item index="/settings"><el-icon><Setting /></el-icon><span>系统设置</span></el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>

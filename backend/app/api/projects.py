@@ -11,16 +11,21 @@ from app.db.mysql import get_db
 from app.models.project import Project
 from app.models.contract import Contract
 from app.models.contract_diff import ContractDiff
+from app.models.project_close import ProjectClose
 from app.schemas.projects import (
     ProjectCreate, ProjectUpdate, ProjectOut,
     ProjectAuditRequest,
 )
 from app.dependencies import get_current_user, require_admin, require_role
 from app.models.user import User
+from app.services.approval import submit_for_approval, audit_project as approval_audit
 from app.utils.pagination import paginate, PageResponse
 from app.utils.file_utils import validate_file_type, validate_file_size, generate_safe_filename, get_upload_path
 from app.exceptions import NotFoundError, ValidationError
-from app.core.contract_parser import parse_word_contract, parse_pdf_contract
+from app.core.contract_parser import (
+    parse_word_contract, parse_pdf_contract,
+    parse_word_contract_with_llm, parse_pdf_contract_with_llm,
+)
 from app.core.contract_verifier import verifier
 
 router = APIRouter()
@@ -46,16 +51,55 @@ async def list_projects(
         query = query.where(Project.project_name.contains(keyword) | Project.customer_name.contains(keyword))
         count_query = count_query.where(Project.project_name.contains(keyword) | Project.customer_name.contains(keyword))
 
-    if user.role not in ("admin",):
+    # 角色感知可见性：
+    # - admin：全部项目
+    # - business：仅自己创建的（草稿/审核中/驳回等全生命周期都看自己的）
+    # - finance / pm：需要对「已立项 / 已结项」项目开票、回款、结项，
+    #   这些项目并非他们创建，故放开 approved/closed 状态的可见性，
+    #   否则财务/项目经理看不到任何可操作项目（历史 BUG）。
+    if user.role == "business":
         query = query.where(Project.created_by == user.id)
         count_query = count_query.where(Project.created_by == user.id)
+    elif user.role in ("finance", "pm"):
+        visible = Project.status.in_(("approved", "closed"))
+        query = query.where(visible)
+        count_query = count_query.where(visible)
+    # admin：不加额外过滤
 
     total = (await db.execute(count_query)).scalar() or 0
     query = query.order_by(Project.created_at.desc()).offset((page - 1) * size).limit(size)
     result = await db.execute(query)
     projects = result.scalars().all()
 
-    return paginate([ProjectOut.model_validate(p) for p in projects], total, page, size)
+    # 附加展示字段：创建人姓名 + 结项申请状态（一次性批量查询，避免 N+1）
+    creators: dict[int, str] = {}
+    creator_ids = {p.created_by for p in projects if p.created_by}
+    if creator_ids:
+        rows = (await db.execute(
+            select(User.id, User.real_name, User.username).where(User.id.in_(creator_ids))
+        )).all()
+        creators = {r[0]: (r[1] or r[2]) for r in rows}
+
+    closes: dict[int, ProjectClose] = {}
+    proj_ids = [p.id for p in projects]
+    if proj_ids:
+        crows = (await db.execute(
+            select(ProjectClose).where(ProjectClose.project_id.in_(proj_ids))
+        )).scalars().all()
+        closes = {c.project_id: c for c in crows}
+
+    items = []
+    for p in projects:
+        out = ProjectOut.model_validate(p)
+        out.created_by_name = creators.get(p.created_by)
+        c = closes.get(p.id)
+        if c:
+            out.close_status = c.status
+            out.acceptance_report = c.acceptance_report_path
+            out.close_date = c.close_date
+        items.append(out)
+
+    return paginate(items, total, page, size)
 
 
 @router.post("/register", response_model=ProjectOut)
@@ -89,10 +133,14 @@ async def register_project(
 async def upload_word_contract(
     project_id: int,
     file: UploadFile = File(...),
-    user: User = Depends(require_role("business", "admin")),
+    user: User = Depends(require_role("business", "admin", "pm")),
     db: AsyncSession = Depends(get_db),
 ):
-    """上传 Word 合同 → python-docx 提取文本 → NLP 实体提取 → 自动回填项目信息。"""
+    """上传 Word 合同 → python-docx 提取文本 → NLP 实体提取 → 自动回填项目信息。
+
+    允许的角色与项目详情页（admin/business/pm）保持一致，避免项目经理
+    打开详情页却因鉴权被拒（403）。
+    """
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
@@ -119,9 +167,9 @@ async def upload_word_contract(
     )
     db.add(contract)
 
-    # 调用 python-docx + NLP 提取
+    # 调用 python-docx + 正则 + LLM 综合提取
     try:
-        ocr_result = parse_word_contract(file_path)
+        ocr_result = await parse_word_contract_with_llm(file_path, db=db)
         extracted = ocr_result["extracted"]
 
         # 自动回填项目信息（仅当项目字段为空时）
@@ -160,10 +208,13 @@ async def upload_word_contract(
 async def upload_pdf_contract(
     project_id: int,
     file: UploadFile = File(...),
-    user: User = Depends(require_role("business", "admin")),
+    user: User = Depends(require_role("business", "admin", "pm")),
     db: AsyncSession = Depends(get_db),
 ):
-    """上传盖章 PDF → OCR 识别文字 → NLP 提取关键字段。"""
+    """上传盖章 PDF → OCR 识别文字 → NLP 提取关键字段。
+
+    角色与项目详情页保持一致（admin/business/pm）。
+    """
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
@@ -196,9 +247,9 @@ async def upload_pdf_contract(
     )
     db.add(contract)
 
-    # 调用 OCR + NLP 提取
+    # 调用 OCR + 正则 + LLM 综合提取
     try:
-        ocr_result = parse_pdf_contract(file_path)
+        ocr_result = await parse_pdf_contract_with_llm(file_path, db=db)
         contract.ocr_result = ocr_result
     except Exception as e:
         ocr_result = {"error": str(e), "source": "paddleocr"}
@@ -239,13 +290,26 @@ async def verify_contract(
     # 从 OCR 结果中提取字段
     ocr_data = pdf_contract.ocr_result.get("extracted", {})
 
-    # 项目录入信息
-    input_data = {
-        "project_name": project.project_name or "",
-        "contract_amount": str(project.contract_amount) if project.contract_amount else "",
-        "contract_no": project.contract_no or "",
-        "sign_date": str(project.sign_date) if project.sign_date else "",
+    # OCR 字段名 → Project 模型属性名映射
+    FIELD_TO_ATTR = {
+        "project_name": "project_name",
+        "contract_amount": "contract_amount",
+        "contract_no": "contract_no",
+        "sign_date": "sign_date",
+        "customer_name": "customer_name",
     }
+
+    # 动态构建录入信息：遍历 OCR 提取的字段，从项目记录中取对应值
+    input_data = {}
+    for field in ocr_data:
+        attr = FIELD_TO_ATTR.get(field, field)
+        val = getattr(project, attr, None)
+        if isinstance(val, Decimal):
+            input_data[field] = str(val)
+        elif isinstance(val, date):
+            input_data[field] = str(val)
+        else:
+            input_data[field] = val or ""
 
     # 调用校验引擎
     diffs = verifier.verify(ocr_data, input_data)
@@ -271,6 +335,93 @@ async def verify_contract(
     return {"diffs": diffs, "ocr_raw": ocr_data}
 
 
+@router.get("/{project_id}/contracts")
+async def list_contracts(
+    project_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取项目所有合同文件列表（含 OCR 结果）。"""
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    if not result.scalar_one_or_none():
+        raise NotFoundError("项目不存在")
+
+    contracts = (await db.execute(
+        select(Contract).where(Contract.project_id == project_id)
+        .order_by(Contract.file_type, Contract.version.desc())
+    )).scalars().all()
+
+    items = []
+    for c in contracts:
+        ocr = c.ocr_result or {}
+        items.append({
+            "id": c.id,
+            "file_type": c.file_type,
+            "file_name": c.file_name,
+            "version": c.version,
+            "extracted": ocr.get("extracted", {}),
+            "extracted_by": ocr.get("extracted_by", {}),
+            "raw_text": ocr.get("raw_text", ""),
+            "source": ocr.get("source", ""),
+            "created_at": c.created_at.isoformat() if c.created_at else None,
+        })
+
+    return {"contracts": items}
+
+
+@router.post("/{project_id}/analyze-versions")
+async def analyze_versions(
+    project_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """多版本 OCR 分析：用 LLM 对比分析该项目所有 PDF 版本的 OCR 结果差异。"""
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
+    if not project:
+        raise NotFoundError("项目不存在")
+
+    # 获取所有 PDF 合同版本
+    contracts = (await db.execute(
+        select(Contract).where(
+            Contract.project_id == project_id,
+            Contract.file_type == "pdf",
+        ).order_by(Contract.version.asc())
+    )).scalars().all()
+
+    if len(contracts) < 2:
+        raise ValidationError("至少需要上传 2 个 PDF 版本才能进行版本分析")
+
+    # 收集各版本的 OCR 结果
+    versions = []
+    for c in contracts:
+        if c.ocr_result and c.ocr_result.get("extracted"):
+            versions.append({
+                "version": c.version,
+                "file_name": c.file_name,
+                "raw_text": c.ocr_result.get("raw_text", ""),
+                "extracted": c.ocr_result["extracted"],
+            })
+
+    if len(versions) < 2:
+        raise ValidationError("至少需要 2 个有效 OCR 结果才能进行版本分析")
+
+    # 检查 LLM 开关
+    from app.utils.config_helper import get_config_value
+    llm_enabled = await get_config_value(db, "llm_enabled", "false")
+    if llm_enabled.lower() != "true":
+        raise ValidationError("LLM 提取未启用，请在系统设置中开启")
+
+    # 调用 LLM 分析版本差异
+    from app.core.llm_extractor import llm_extractor
+    analysis = await llm_extractor.analyze_versions(versions)
+
+    return {
+        "versions": versions,
+        "analysis": analysis,
+    }
+
+
 @router.post("/{project_id}/submit")
 async def submit_project(
     project_id: int,
@@ -278,24 +429,7 @@ async def submit_project(
     db: AsyncSession = Depends(get_db),
 ):
     """提交立项申请。"""
-    from app.models.activity_log import ActivityLog
-
-    result = await db.execute(select(Project).where(Project.id == project_id))
-    project = result.scalar_one_or_none()
-    if not project:
-        raise NotFoundError("项目不存在")
-    if project.status != "draft":
-        raise ValidationError("只有草稿状态的项目可以提交")
-
-    project.status = "pending_audit"
-
-    db.add(ActivityLog(
-        action="project_submit",
-        detail=f"项目「{project.project_name}」提交立项申请",
-        user_id=user.id,
-        project_id=project_id,
-    ))
-
+    project = await submit_for_approval(db, project_id, user)
     await db.flush()
     return {"message": "提交成功", "status": project.status}
 
@@ -308,40 +442,7 @@ async def audit_project(
     db: AsyncSession = Depends(get_db),
 ):
     """审核立项。"""
-    from datetime import datetime, timezone
-    from app.models.audit_log import AuditLog
-    from app.models.activity_log import ActivityLog
-
-    result = await db.execute(select(Project).where(Project.id == project_id))
-    project = result.scalar_one_or_none()
-    if not project:
-        raise NotFoundError("项目不存在")
-    if project.status != "pending_audit":
-        raise ValidationError("项目不在待审核状态")
-
-    project.status = body.result
-    project.audit_by = admin.id
-    project.audit_time = datetime.now(timezone.utc)
-    project.audit_reason = body.reason
-
-    # 写入审核日志
-    db.add(AuditLog(
-        project_id=project_id,
-        action="project_audit",
-        result=body.result,
-        reason=body.reason,
-        reviewer_id=admin.id,
-    ))
-
-    # 写入活动日志
-    action_label = "审核通过" if body.result == "approved" else "审核驳回"
-    db.add(ActivityLog(
-        action=f"audit_{body.result}",
-        detail=f"项目「{project.project_name}」{action_label}",
-        user_id=admin.id,
-        project_id=project_id,
-    ))
-
+    project = await approval_audit(db, project_id, body.result, body.reason, admin)
     await db.flush()
     return {"message": f"审核完成: {body.result}", "status": project.status}
 
