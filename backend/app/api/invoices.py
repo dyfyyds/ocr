@@ -1,6 +1,7 @@
 # ============================================================
 #  开票管理接口 - 发票上传 + OCR 识别
 # ============================================================
+import asyncio
 from fastapi import APIRouter, Depends, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -71,28 +72,31 @@ async def create_invoice(
         with open(file_path, "wb") as f:
             f.write(content)
 
-        # 调用 OCR 识别发票
-        try:
-            ocr_result = parse_invoice_image(file_path)
-            extracted = ocr_result.get("extracted", {})
+        # 优化：如果前端已通过 /ocr/recognize 预识别填充了关键字段，跳过重复 OCR
+        user_filled = bool(invoice_no and invoice_code)
+        if not user_filled:
+            # OCR 自动填充（当用户未手动填写时）—— 放到线程池避免阻塞事件循环
+            try:
+                loop = asyncio.get_running_loop()
+                ocr_result = await loop.run_in_executor(None, parse_invoice_image, file_path)
+                extracted = ocr_result.get("extracted", {})
 
-            # OCR 自动填充（当用户未手动填写时）
-            if not invoice_no and extracted.get("invoice_no"):
-                invoice_no = extracted["invoice_no"]
-            if not invoice_code and extracted.get("invoice_code"):
-                invoice_code = extracted["invoice_code"]
-            if not tax_rate and extracted.get("tax_rate"):
-                try:
-                    tax_rate = Decimal(extracted["tax_rate"])
-                except Exception:
-                    pass
-            if not tax_amount and extracted.get("tax_amount"):
-                try:
-                    tax_amount = Decimal(extracted["tax_amount"])
-                except Exception:
-                    pass
-        except Exception as e:
-            ocr_result = {"error": str(e)}
+                if not invoice_no and extracted.get("invoice_no"):
+                    invoice_no = extracted["invoice_no"]
+                if not invoice_code and extracted.get("invoice_code"):
+                    invoice_code = extracted["invoice_code"]
+                if not tax_rate and extracted.get("tax_rate"):
+                    try:
+                        tax_rate = Decimal(extracted["tax_rate"])
+                    except Exception:
+                        pass
+                if not tax_amount and extracted.get("tax_amount"):
+                    try:
+                        tax_amount = Decimal(extracted["tax_amount"])
+                    except Exception:
+                        pass
+            except Exception as e:
+                ocr_result = {"error": str(e)}
 
     invoice = Invoice(
         project_id=project_id,

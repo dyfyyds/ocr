@@ -65,6 +65,8 @@ services:
     volumes:
       - ./backend:/app
       - ./uploads:/app/uploads
+      # PaddleOCR 模型缓存持久化（避免无网络时重新下载）
+      - paddlex-models:/root/.paddlex
     depends_on:
       mysql:
         condition: service_healthy
@@ -128,6 +130,11 @@ services:
       start_period: 5s
     networks:
       - pm-network
+
+# ==================== 卷 ====================
+volumes:
+  paddlex-models:
+    external: true
 
 # ==================== 网络 ====================
 networks:

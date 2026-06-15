@@ -1,6 +1,7 @@
 # ============================================================
 #  独立 OCR 识别接口 - 不绑定项目，正则 + LLM 综合提取
 # ============================================================
+import asyncio
 import logging
 import tempfile
 import os
@@ -45,36 +46,43 @@ async def recognize_file(
     validate_file_size(len(content))
 
     try:
-        # 1) 按文件类型取全文（不再按类型分叉提取逻辑：合同/发票/汇款统一三路提取）
-        ocr_items = []
-        if ext == ".docx":
-            from app.core.contract_parser import _extract_text_from_docx
-            with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
-                tmp.write(content)
-                tmp_path = tmp.name
-            try:
-                full_text = _extract_text_from_docx(tmp_path)
-            finally:
-                os.unlink(tmp_path)
-            source = "python-docx"
-        elif ext == ".pdf":
-            from app.core.ocr_engine import ocr_from_pdf_bytes
-            ocr_items = ocr_from_pdf_bytes(content)
-            full_text = "\n".join([item["text"] for item in ocr_items])
-            source = "paddleocr"
-        elif ext in IMAGE_EXTENSIONS:
-            ocr_items = ocr_from_image_bytes(content)
-            full_text = "\n".join([item["text"] for item in ocr_items])
-            source = "paddleocr"
-        else:
-            raise ValidationError(f"不支持的文件类型: {ext}")
+        # 优化：OCR + 正则提取放到线程池，避免阻塞事件循环
+        def _ocr_and_extract():
+            """同步：OCR 识别 + 三路正则提取。"""
+            ocr_items = []
+            if ext == ".docx":
+                from app.core.contract_parser import _extract_text_from_docx
+                with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
+                    tmp.write(content)
+                    tmp_path = tmp.name
+                try:
+                    full_text = _extract_text_from_docx(tmp_path)
+                finally:
+                    os.unlink(tmp_path)
+                src = "python-docx"
+            elif ext == ".pdf":
+                from app.core.ocr_engine import ocr_from_pdf_bytes
+                ocr_items = ocr_from_pdf_bytes(content)
+                full_text = "\n".join([item["text"] for item in ocr_items])
+                src = "paddleocr"
+            elif ext in IMAGE_EXTENSIONS:
+                ocr_items = ocr_from_image_bytes(content)
+                full_text = "\n".join([item["text"] for item in ocr_items])
+                src = "paddleocr"
+            else:
+                raise ValidationError(f"不支持的文件类型: {ext}")
 
-        # 2) 三路规则提取：合同 + 发票 + 汇款（无论 PDF/图片/Word 都跑全套）
-        contract_extracted = extractor.extract(full_text)
-        invoice_extracted = _extract_invoice_fields(full_text)
-        payment_extracted = _extract_payment_fields(full_text)
+            contract_extracted = extractor.extract(full_text)
+            invoice_extracted = _extract_invoice_fields(full_text)
+            payment_extracted = _extract_payment_fields(full_text)
 
-        # 3) LLM 提取（受 llm_enabled 开关控制；面向合同字段）
+            return full_text, ocr_items, src, contract_extracted, invoice_extracted, payment_extracted
+
+        loop = asyncio.get_running_loop()
+        full_text, ocr_items, source, contract_extracted, invoice_extracted, payment_extracted = \
+            await loop.run_in_executor(None, _ocr_and_extract)
+
+        # LLM 提取（异步，受 llm_enabled 开关控制）
         llm_result = await _try_llm_extract(full_text, db)
 
         # 合并：合同 + 发票字段一并纳入 extracted；汇款字段单独返回供汇款表单使用
